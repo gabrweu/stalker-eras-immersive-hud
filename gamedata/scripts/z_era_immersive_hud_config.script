@@ -1,0 +1,58 @@
+MODE = { SHOW = 1, HIDE = 2, KEY = 3 }
+
+local MODE_CONTENT = {
+    { MODE.SHOW, "era_ihud_mode_show" },
+    { MODE.HIDE, "era_ihud_mode_hide" },
+    { MODE.KEY,  "era_ihud_mode_key" },
+}
+
+local function mode_row(key, hint)
+    return {
+        key = key,
+        def = MODE.KEY,
+        mcm = { type = "radio_h", val = 2, hint = hint, content = MODE_CONTENT },
+    }
+end
+
+SETTINGS = {
+    {
+        key = "toggle_key",
+        def = 0,
+        mcm = { type = "key_bind", val = 2, hint = "era_ihud_toggle_key" }
+    },
+
+    {
+        key = "toggle_modifier",
+        def = 0,
+        mcm = {
+            type = "kb_mod_radio",
+            val = 2,
+            hint = "era_ihud_toggle_modifier",
+            content = {
+                { 0, "mcm_kb_mod_none" },
+                { 1, "mcm_kb_mod_shift" },
+                { 2, "mcm_kb_mod_ctrl" },
+                { 3, "mcm_kb_mod_alt" },
+            },
+        },
+    },
+    { key = "auto_hide_enabled",       def = false, mcm = { type = "check", val = 1, hint = "era_ihud_auto_hide" } },
+    { key = "reveal_duration",         def = 5,     mcm = { type = "track", val = 2, min = 1, max = 30, step = 1, hint = "era_ihud_reveal_duration" } },
+    { key = "reveal_during_inventory", def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_reveal_inventory" } },
+    { key = "reveal_bhs_on_damage",    def = false, mcm = { type = "check", val = 1, hint = "era_ihud_bhs_on_damage" } },
+    mode_row("mode_minimap", "era_ihud_minimap"),
+    mode_row("mode_bhs", "era_ihud_bhs"),
+    mode_row("mode_ammo", "era_ihud_ammo"),
+    mode_row("mode_statuses", "era_ihud_statuses"),
+    mode_row("mode_other_mods", "era_ihud_other_mods"),
+    mode_row("mode_pda_messages", "era_ihud_pda_messages"),
+    mode_row("mode_pda_notification", "era_ihud_pda_notification"),
+}
+
+KEYS = {}
+DEFAULTS = {}
+
+for _, entry in ipairs(SETTINGS) do
+    KEYS[entry.key] = entry.key
+    DEFAULTS[entry.key] = entry.def
+end
