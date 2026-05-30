@@ -1,3 +1,4 @@
+<img width="1761" height="1248" alt="11" src="https://github.com/user-attachments/assets/99f60cbf-aea8-4600-a848-020cd2d455a3" />
 # stalker-eras-immersive-hud
 Disable HUD elements with granularity or use a hotkey to toggle them at any time.
 
@@ -15,9 +16,6 @@ Additionally, there are settings to:
 - hide the HUD after X amount of seconds after a toggle.
 - show health data and statuses when opening the inventory.
 - show health data and statuses when taking damage.
-
-<img width="1761" height="1248" alt="11" src="https://github.com/user-attachments/assets/99f60cbf-aea8-4600-a848-020cd2d455a3" />
-
 
 ### Setup
 1. Install with MO and keep it close to the bottom of your list.
