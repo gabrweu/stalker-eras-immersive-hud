@@ -1,4 +1,4 @@
-name: Create Release with 7z Archive
+name: Create Release with Zip Archive
 
 on:
   workflow_dispatch:
@@ -36,10 +36,10 @@ jobs:
           echo "Files to build:"
           ls -la build_temp/
 
-      - name: Create 7z archive
-        uses: edgarrc/action-7z@v1
-        with:
-          args: 7z a -t7z -mx=9 ERA-Immersive-HUD-${{ github.event.inputs.version }}.7z ./build_temp/gamedata -r
+      - name: Create zip archive
+        run: |
+          cd build_temp
+          zip -r -9 ../ERA-Immersive-HUD-${{ github.event.inputs.version }}.zip gamedata
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -48,6 +48,6 @@ jobs:
           name: Release ${{ github.event.inputs.version }}
           body: |
             ${{ github.event.inputs.description }}
-          files: ERA-Immersive-HUD-${{ github.event.inputs.version }}.7z
+          files: ERA-Immersive-HUD-${{ github.event.inputs.version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
