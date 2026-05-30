@@ -28,7 +28,6 @@ Additionally, there are settings to:
 2. Setup the hotkey in the Addons menu.
 4. Profit.
 
-For best results, enable all the HUD elements in the Anomaly settings as per the screenshot.
 For the toggle hotkey I personally use ` and rebind the console to another key. Do whatever you want.
 
 
