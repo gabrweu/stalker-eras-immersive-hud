@@ -12,6 +12,7 @@ Mod contains a single, non-overwriting script file that can toggle or hide:
 - ammo/weapon info
 - PDA notification icon on the right
 - PDA messages on the left
+- companion hud
 
 Additionally, there are settings to:
 - hide the HUD after X amount of seconds after a toggle.
