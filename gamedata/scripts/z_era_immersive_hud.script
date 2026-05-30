@@ -266,15 +266,24 @@ local function set_minimap_visible(visible)
     mg.UIMotionIcon:Show(visible and true or false)
 end
 
+local function set_companion_visible(visible)
+    if not (axr_companions and axr_companions.HUD) then return end
+
+    local hud = axr_companions.HUD
+    if not hud.Show then return end
+    hud:Show(visible and true or false)
+end
+
 local function apply_hud_visibility_logic()
     if not (db and db.actor) then return end
 
-    set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     apply_bhs_visibility()
+    set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
     set_status_visible(should_display_for_setting_key(KEYS.mode_statuses, true))
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
+    set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
 end
 
 

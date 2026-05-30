@@ -48,6 +48,7 @@ SETTINGS = {
     mode_row("mode_statuses", "era_ihud_statuses"),
     mode_row("mode_pda_messages", "era_ihud_pda_messages"),
     mode_row("mode_pda_notification", "era_ihud_pda_notification"),
+    mode_row("mode_companion", "era_ihud_companion"),
 }
 
 KEYS = {}

@@ -29,4 +29,6 @@
 	<string id="ui_mcm_era_ihud_pda_messages_desc"><text>The bottom-left news pop-ups (pickups, tips, task updates, faction messages).</text></string>
 	<string id="ui_mcm_era_ihud_pda_notification"><text>PDA notification icon</text></string>
 	<string id="ui_mcm_era_ihud_pda_notification_desc"><text>The small notification icon on the right that blips when a new PDA message arrives.</text></string>
+	<string id="ui_mcm_era_ihud_companion"><text>Companion list</text></string>
+	<string id="ui_mcm_era_ihud_companion_desc"><text>The on-screen companion list (health, distance, orders) shown when you have squad members. Requires the GAMMA companion HUD.</text></string>
 </string_table>
