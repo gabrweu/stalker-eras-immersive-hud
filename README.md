@@ -34,3 +34,7 @@ Behavior might be wonky with other mods that affect the HUD; let me know if you 
 Claude Opus 4.7 was used to bounce ideas off of and help with syntax as I had never touched LUA before.
 
 Repository: https://github.com/gabrweu/stalker-eras-immersive-hud
+
+
+### License
+Just do whatever the fuck you want to. Credit is appreciated.
