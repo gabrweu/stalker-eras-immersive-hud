@@ -19,7 +19,8 @@ Additionally, there are settings to:
 - show health data and statuses when taking damage.
 - show just the stamina bar when running regardless of the HUD state.
 
-<img width="1761" height="1248" alt="11" src="https://github.com/user-attachments/assets/99f60cbf-aea8-4600-a848-020cd2d455a3" />
+
+<img width="1756" height="1277" alt="Screenshot 2026-05-30 18-04-00" src="https://github.com/user-attachments/assets/d791d3f0-287d-47c3-b608-1190bc77124d" />
 
 ### Setup
 1. Install with MO and keep it close to the bottom of your list.
