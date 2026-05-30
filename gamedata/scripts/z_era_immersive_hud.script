@@ -24,6 +24,18 @@ local function reload_settings_cache()
     end
 end
 
+local function should_display_for_setting_key(element)
+    local mode = settings_cache[element]
+    if mode == MODE.SHOW then return true end
+    if mode == MODE.HIDE then return false end
+
+    if is_hud_showing then return true end
+    if is_inventory_open and settings_cache.reveal_during_inventory then return true end
+
+    return false
+end
+
+
 ---------------------------------------------------------------------------------------------
 
 local BHS_PARTS          = { "head", "torso", "rightarm", "leftarm", "rightleg", "leftleg" }
@@ -52,30 +64,9 @@ end
 
 local BHS_STATIC_NAMES = build_bhs_static_names()
 
----------------------------------------------------------------------------------------------
-
-local function should_display_for_setting_key(element)
-    local mode = settings_cache[element]
-    if mode == MODE.SHOW then return true end
-    if mode == MODE.HIDE then return false end
-
-    if is_hud_showing then return true end
-    if is_inventory_open and settings_cache.reveal_during_inventory then return true end
-
-    return false
-end
-
 local function bhs_should_display()
     if bhs_reveal_for_time > 0 then return true end
     return should_display_for_setting_key(KEYS.mode_bhs)
-end
-
-local function set_minimap_visible(visible)
-    local mg = ActorMenu.get_maingame()
-    if not mg or not mg.UIZoneMap then return end
-
-    mg.UIZoneMap.disabled = not visible
-    mg.UIMotionIcon:Show(visible and true or false)
 end
 
 local function set_bhs_visible(visible)
@@ -91,15 +82,109 @@ local function set_bhs_visible(visible)
     end
 end
 
--- Applies the current reveal state to every managed element.
+
+---------------------------------------------------------------------------------------------
+
+local AMMO_ELEMENTS = { "m_ui_weapon_icon", "m_ui_weapon_cur_ammo", "m_fire_mode" }
+
+local function set_ammo_visible(visible)
+    local mg = ActorMenu.get_maingame()
+    if not mg or not mg.m_ui_hud_states then return end
+
+    local states = mg.m_ui_hud_states
+    for _, name in ipairs(AMMO_ELEMENTS) do
+        local ele = states[name]
+        if ele then
+            local pos = ele:GetWndPos()
+            -- Hidden => X off-screen (negative), shown => X on-screen (positive). Idempotent.
+            if (not visible and pos.x > 0) or (visible and pos.x < 0) then
+                pos.x = -pos.x
+                ele:SetWndPos(pos)
+            end
+        end
+    end
+end
+
+
+local PDA_MSGS_OFFSCREEN_Y = 9999
+local pda_msgs_home_x, pda_msgs_home_y = nil, nil
+
+local function set_pda_messages_visible(visible)
+    if not (ActorMenu and ActorMenu.get_messages_menu) then return end
+
+    local ok, w = pcall(ActorMenu.get_messages_menu)
+    if not (ok and w and w.GetWndPos and w.SetWndPos) then return end
+
+    -- get the home x and y to restore it when re-enabling.
+    if not pda_msgs_home_y then
+        local got, p = pcall(w.GetWndPos, w)
+        if not (got and p) then return end
+        pda_msgs_home_x, pda_msgs_home_y = p.x, p.y
+    end
+
+    local y = visible and pda_msgs_home_y or (pda_msgs_home_y + PDA_MSGS_OFFSCREEN_Y)
+    pcall(w.SetWndPos, w, vector2():set(pda_msgs_home_x, y))
+end
+
+-- "notify_icon"
+local NOTIFY_OFFSCREEN_X = 9999
+local notify_icon_home_x = nil -- engine's on-screen X, captured the first time we see it placed
+
+local function set_pda_notification_visible(visible)
+    local hud = get_hud()
+    if not hud or not hud.GetCustomStatic then return end
+
+    local cs = hud:GetCustomStatic("notify_icon")
+    if not cs then return end -- no notification icon active right now
+
+    local wnd = cs:wnd()
+    if not wnd then return end
+
+    local pos = wnd:GetWndPos()
+
+    if pos.x < NOTIFY_OFFSCREEN_X then
+        notify_icon_home_x = pos.x
+    end
+
+    pos.x = (visible and notify_icon_home_x) or NOTIFY_OFFSCREEN_X
+    wnd:SetWndPos(pos)
+end
+
+-- Hook the engine's notification setter so a freshly-created icon immediately obeys our state.
+if actor_menu and actor_menu.set_notification and not actor_menu.__era_ihud_notif_hooked then
+    local original_set_notification = actor_menu.set_notification
+
+    actor_menu.set_notification = function(typ, texture, tm, snd)
+        original_set_notification(typ, texture, tm, snd)
+        set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
+    end
+
+    actor_menu.__era_ihud_notif_hooked = true
+end
+
+
+---------------------------------------------------------------------------------------------
+
+local function set_minimap_visible(visible)
+    local mg = ActorMenu.get_maingame()
+    if not mg or not mg.UIZoneMap then return end
+
+    mg.UIZoneMap.disabled = not visible
+    mg.UIMotionIcon:Show(visible and true or false)
+end
+
 local function apply_hud_visibility_logic()
     if not (db and db.actor) then return end
 
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_bhs_visible(bhs_should_display())
+    set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
+    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
+    set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
 
-    -- TODO: ammo / statuses / other-mod overlays / PDA messages / notification routed here too.
+    -- TODO: statuses / other-mod overlays routed here too.
 end
+
 
 ---------------------------------------------------------------------------------------------
 
@@ -115,6 +200,7 @@ end
 
 local function actor_on_before_hit_callback(shit)
     if not settings_cache.reveal_bhs_on_damage then return end
+    if not (shit and shit.power and shit.power > 0) then return end -- ignore 0-damage hits
 
     local duration = (settings_cache.reveal_duration or 5) * 1000
     bhs_reveal_for_time = time_global() + duration
@@ -164,17 +250,26 @@ local function on_option_change_callback()
     apply_hud_visibility_logic()
 end
 
+local function on_news_received_callback()
+    if not (db and db.actor) then return end
+    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
+end
+
 function on_game_start()
     reload_settings_cache()
 
-    is_hud_showing      = false
-    is_inventory_open   = false
-    bhs_reveal_for_time = 0
-    applied_initial     = false
+    is_hud_showing                   = false
+    is_inventory_open                = false
+    bhs_reveal_for_time              = 0
+    applied_initial                  = false
+
+    notify_icon_home_x               = nil
+    pda_msgs_home_x, pda_msgs_home_y = nil, nil
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
     RegisterScriptCallback("actor_on_update", actor_on_update_callback)
     RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
+    RegisterScriptCallback("on_news_received", on_news_received_callback)
 end
