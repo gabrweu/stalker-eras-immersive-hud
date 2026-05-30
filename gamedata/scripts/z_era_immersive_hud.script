@@ -91,6 +91,7 @@ end
 
 local STAMINA_REVEAL_BELOW = 0.9
 local STAMINA_REFILLED_AT  = 0.99 -- avoids flickering
+local DAMAGE_HEALTH_DROP   = 0.0293
 
 local STAMINA_STATIC_NAMES = {}
 for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
@@ -179,15 +180,23 @@ local function set_pda_messages_visible(visible)
     local ok, w = pcall(ActorMenu.get_messages_menu)
     if not (ok and w and w.GetWndPos and w.SetWndPos) then return end
 
-    -- get the home x and y to restore it when re-enabling.
-    if not pda_messages_home_y then
-        local got, p = pcall(w.GetWndPos, w)
-        if not (got and p) then return end
-        pda_messages_home_x, pda_messages_home_y = p.x, p.y
+    local got, p = pcall(w.GetWndPos, w)
+    if not (got and p) then return end
+
+    -- Are we currently holding it at our own off-screen park spot (home_y + OFFSCREEN)?
+    local parked = pda_messages_home_y and p.y >= pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y - 1
+
+    if not parked then
+        pda_messages_home_x, pda_messages_home_y = p.x, p.y -- live on-screen home
     end
 
-    local y = visible and pda_messages_home_y or (pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y)
-    pcall(w.SetWndPos, w, vector2():set(pda_messages_home_x, y))
+    if visible then
+        if parked then -- bring it back from our park; otherwise leave the engine's placement alone
+            pcall(w.SetWndPos, w, vector2():set(pda_messages_home_x, pda_messages_home_y))
+        end
+    else
+        pcall(w.SetWndPos, w, vector2():set(pda_messages_home_x, pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y))
+    end
 end
 
 
@@ -301,7 +310,7 @@ local function actor_on_update_callback()
 
     if settings_cache.reveal_bhs_on_damage then
         local hp = db.actor.health
-        if last_actor_health and hp < last_actor_health - 0.001 then
+        if last_actor_health and hp > 0 and hp < last_actor_health - DAMAGE_HEALTH_DROP then
             local was_inactive = (bhs_reveal_on_damage_timer == 0)
             bhs_reveal_on_damage_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
             if was_inactive then apply_bhs_visibility() end
