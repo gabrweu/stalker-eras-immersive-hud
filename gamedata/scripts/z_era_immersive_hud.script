@@ -107,7 +107,7 @@ end
 
 
 local PDA_MSGS_OFFSCREEN_Y = 9999
-local pda_msgs_home_x, pda_msgs_home_y = nil, nil
+local pda_messages_home_x, pda_messages_home_y = nil, nil
 
 local function set_pda_messages_visible(visible)
     if not (ActorMenu and ActorMenu.get_messages_menu) then return end
@@ -116,19 +116,20 @@ local function set_pda_messages_visible(visible)
     if not (ok and w and w.GetWndPos and w.SetWndPos) then return end
 
     -- get the home x and y to restore it when re-enabling.
-    if not pda_msgs_home_y then
+    if not pda_messages_home_y then
         local got, p = pcall(w.GetWndPos, w)
         if not (got and p) then return end
-        pda_msgs_home_x, pda_msgs_home_y = p.x, p.y
+        pda_messages_home_x, pda_messages_home_y = p.x, p.y
     end
 
-    local y = visible and pda_msgs_home_y or (pda_msgs_home_y + PDA_MSGS_OFFSCREEN_Y)
-    pcall(w.SetWndPos, w, vector2():set(pda_msgs_home_x, y))
+    local y = visible and pda_messages_home_y or (pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y)
+    pcall(w.SetWndPos, w, vector2():set(pda_messages_home_x, y))
 end
+
 
 -- "notify_icon"
 local NOTIFY_OFFSCREEN_X = 9999
-local notify_icon_home_x = nil -- engine's on-screen X, captured the first time we see it placed
+local pda_notification_icon_home_x = nil -- engine's on-screen X, captured the first time we see it placed
 
 local function set_pda_notification_visible(visible)
     local hud = get_hud()
@@ -143,10 +144,10 @@ local function set_pda_notification_visible(visible)
     local pos = wnd:GetWndPos()
 
     if pos.x < NOTIFY_OFFSCREEN_X then
-        notify_icon_home_x = pos.x
+        pda_notification_icon_home_x = pos.x
     end
 
-    pos.x = (visible and notify_icon_home_x) or NOTIFY_OFFSCREEN_X
+    pos.x = (visible and pda_notification_icon_home_x) or NOTIFY_OFFSCREEN_X
     wnd:SetWndPos(pos)
 end
 
@@ -163,13 +164,32 @@ if actor_menu and actor_menu.set_notification and not actor_menu.__era_ihud_noti
 end
 
 
----------------------------------------------------------------------------------------------
+local STATUS_OFFSCREEN_Y = 9999
+local status_icons_home_x, status_icons_home_y = nil, nil
+
+local function set_status_visible(visible)
+    if not actor_status then return end
+
+    local hud = actor_status.HUD
+    if not (hud and hud.GetWndPos and hud.SetWndPos) then return end -- dialog not built yet
+
+    if not status_icons_home_y then                                  -- capture home BEFORE the first move, or we can't restore it
+        local ok, p = pcall(hud.GetWndPos, hud)
+        if not (ok and p) then return end
+        status_icons_home_x, status_icons_home_y = p.x, p.y
+    end
+
+    local y = visible and status_icons_home_y or (status_icons_home_y + STATUS_OFFSCREEN_Y)
+    pcall(hud.SetWndPos, hud, vector2():set(status_icons_home_x, y))
+end
+
 
 local function set_minimap_visible(visible)
     local mg = ActorMenu.get_maingame()
     if not mg or not mg.UIZoneMap then return end
 
     mg.UIZoneMap.disabled = not visible
+    -- not sure UIMotion is needed tbf
     mg.UIMotionIcon:Show(visible and true or false)
 end
 
@@ -179,10 +199,11 @@ local function apply_hud_visibility_logic()
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_bhs_visible(bhs_should_display())
     set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
+    set_status_visible(should_display_for_setting_key(KEYS.mode_statuses))
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
 
-    -- TODO: statuses / other-mod overlays routed here too.
+    -- TODO: other-mod overlays routed here too.
 end
 
 
@@ -258,13 +279,14 @@ end
 function on_game_start()
     reload_settings_cache()
 
-    is_hud_showing                   = false
-    is_inventory_open                = false
-    bhs_reveal_for_time              = 0
-    applied_initial                  = false
+    is_hud_showing                           = false
+    is_inventory_open                        = false
+    bhs_reveal_for_time                      = 0
+    applied_initial                          = false
 
-    notify_icon_home_x               = nil
-    pda_msgs_home_x, pda_msgs_home_y = nil, nil
+    pda_notification_icon_home_x             = nil
+    pda_messages_home_x, pda_messages_home_y = nil, nil
+    status_icons_home_x, status_icons_home_y = nil, nil
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
