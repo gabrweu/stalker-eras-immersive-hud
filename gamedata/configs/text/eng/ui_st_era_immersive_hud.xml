@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="windows-1251" ?>
+<string_table>
+	<string id="ui_mcm_menu_era_immersive_hud"><text>Era's Immersive HUD</text></string>
+	<string id="ui_mcm_era_ihud_title"><text>Era's Immersive HUD</text></string>
+	<string id="ui_mcm_era_ihud_help"><text>Toggle your HUD with a single hotkey. Each element below can be set to Always show, Always hide, or Toggle with Hotkey (hidden until you press the key). Bind your hotkey first as it is unbound by default.</text></string>
+	<string id="ui_mcm_lst_era_ihud_mode_show"><text>Always show</text></string>
+	<string id="ui_mcm_lst_era_ihud_mode_hide"><text>Always hide</text></string>
+	<string id="ui_mcm_lst_era_ihud_mode_key"><text>Toggle with Hotkey</text></string>
+	<string id="ui_mcm_era_ihud_toggle_key"><text>Toggle HUD hotkey</text></string>
+	<string id="ui_mcm_era_ihud_toggle_key_desc"><text>The key that shows or hides the HUD. Pressing it flips every element set to "Toggle with Hotkey" between shown and hidden. Elements set to "Toggle with Hotkey" start hidden each time a save loads.</text></string>
+	<string id="ui_mcm_era_ihud_toggle_modifier"><text>Hotkey modifier</text></string>
+	<string id="ui_mcm_era_ihud_toggle_modifier_desc"><text>An optional modifier (Shift, Ctrl, or Alt) that must be held together with the toggle hotkey for it to fire.</text></string>
+	<string id="ui_mcm_era_ihud_auto_hide"><text>Auto-hide after showing</text></string>
+	<string id="ui_mcm_era_ihud_auto_hide_desc"><text>When enabled, toggling the HUD with the hotkey automatically hides it again after the "Reveal duration" set below (in seconds).</text></string>
+	<string id="ui_mcm_era_ihud_reveal_duration"><text>Reveal duration (seconds)</text></string>
+	<string id="ui_mcm_era_ihud_reveal_inventory"><text>Show health and statuses while in inventory</text></string>
+	<string id="ui_mcm_era_ihud_reveal_inventory_desc"><text>While your inventory or PDA is open, show BHS health HUD and status effects.</text></string>
+	<string id="ui_mcm_era_ihud_bhs_on_damage"><text>Show health when taking damage</text></string>
+	<string id="ui_mcm_era_ihud_bhs_on_damage_desc"><text>When you take a hit, briefly show the BHS panel even if it is set to "Always hide" or currently hidden.</text></string>
+	<string id="ui_mcm_era_ihud_ammo"><text>Ammo and weapon HUD</text></string>
+	<string id="ui_mcm_era_ihud_minimap"><text>Minimap</text></string>
+	<string id="ui_mcm_era_ihud_bhs"><text>Body-health panel (BHS)</text></string>
+	<string id="ui_mcm_era_ihud_body_health_desc"><text>BHS and psy health bar.</text></string>
+	<string id="ui_mcm_era_ihud_statuses"><text>Status effect icons</text></string>
+	<string id="ui_mcm_era_ihud_status_desc"><text>The status-effect icons such as hunger, thirst, radiation, bleeding, etc.</text></string>
+	<string id="ui_mcm_era_ihud_other_mods"><text>Other mods - EXPERIMENTAL!</text></string>
+	<string id="ui_mcm_era_ihud_other_mods_desc"><text>A catch-all for HUD elements that other mods add through the standard interfaces - kill feeds, side panels, ammo checkers, and similar. Might not play nice with EVERY mod out there; experimental!</text></string>
+	<string id="ui_mcm_era_ihud_pda_messages"><text>PDA messages</text></string>
+	<string id="ui_mcm_era_ihud_pda_messages_desc"><text>The bottom-left news pop-ups (pickups, tips, task updates, faction messages).</text></string>
+	<string id="ui_mcm_era_ihud_pda_notification"><text>PDA notification icon</text></string>
+	<string id="ui_mcm_era_ihud_pda_notification_desc"><text>The small notification icon on the right that blips when a new PDA message arrives.</text></string>
+</string_table>

@@ -36,17 +36,17 @@ SETTINGS = {
             },
         },
     },
-    { key = "auto_hide_enabled",       def = false, mcm = { type = "check", val = 1, hint = "era_ihud_auto_hide" } },
+    { key = "auto_hide_enabled",       def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_auto_hide" } },
     { key = "reveal_duration",         def = 5,     mcm = { type = "track", val = 2, min = 1, max = 30, step = 1, hint = "era_ihud_reveal_duration" } },
-    { key = "reveal_during_inventory", def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_reveal_inventory" } },
+    { key = "reveal_during_inventory", def = false, mcm = { type = "check", val = 1, hint = "era_ihud_reveal_inventory" } },
     { key = "reveal_bhs_on_damage",    def = false, mcm = { type = "check", val = 1, hint = "era_ihud_bhs_on_damage" } },
     mode_row("mode_minimap", "era_ihud_minimap"),
     mode_row("mode_bhs", "era_ihud_bhs"),
     mode_row("mode_ammo", "era_ihud_ammo"),
     mode_row("mode_statuses", "era_ihud_statuses"),
-    mode_row("mode_other_mods", "era_ihud_other_mods"),
     mode_row("mode_pda_messages", "era_ihud_pda_messages"),
     mode_row("mode_pda_notification", "era_ihud_pda_notification"),
+    mode_row("mode_other_mods", "era_ihud_other_mods"),
 }
 
 KEYS = {}
