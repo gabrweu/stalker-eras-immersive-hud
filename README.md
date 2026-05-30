@@ -1,7 +1,7 @@
 # stalker-eras-immersive-hud
 Disable HUD elements with granularity or use a hotkey to toggle them at any time.
 
-Idea is to allow for hud customization without overwriting GAMMA files nor using hud_draw nor affecting other mods. As a bonus, making it work for any mod without need for intrinsic support (this is very experimental; needs more testing).
+Idea is to allow for hud customization without overwriting GAMMA files nor using hud_draw nor affecting other mods. As a bonus, making it work for any mod without need for intrinsic support (this is very experimental; needs more testing before including again).
 
 This is specifically done for GAMMA.
 
@@ -17,6 +17,7 @@ Additionally, there are settings to:
 - hide the HUD after X amount of seconds after a toggle.
 - show health data and statuses when opening the inventory.
 - show health data and statuses when taking damage.
+- show just the stamina bar when running regardless of the HUD state.
 
 <img width="1761" height="1248" alt="11" src="https://github.com/user-attachments/assets/99f60cbf-aea8-4600-a848-020cd2d455a3" />
 
