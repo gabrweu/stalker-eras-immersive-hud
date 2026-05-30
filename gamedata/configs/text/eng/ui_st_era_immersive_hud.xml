@@ -16,7 +16,9 @@
 	<string id="ui_mcm_era_ihud_reveal_inventory"><text>Show health and statuses while in inventory</text></string>
 	<string id="ui_mcm_era_ihud_reveal_inventory_desc"><text>While your inventory or PDA is open, show BHS health HUD and status effects.</text></string>
 	<string id="ui_mcm_era_ihud_bhs_on_damage"><text>Show health when taking damage</text></string>
-	<string id="ui_mcm_era_ihud_bhs_on_damage_desc"><text>When you take a hit, briefly show the BHS panel even if it is set to "Always hide" or currently hidden.</text></string>
+	<string id="ui_mcm_era_ihud_bhs_on_damage_desc"><text>When you take a hit or psy damage the BHS hud will show even if set to "Always hide" (or just currently hidden).</text></string>
+	<string id="ui_mcm_era_ihud_bhs_keep_while_hurt"><text>Keep panel shown while hurt</text></string>
+	<string id="ui_mcm_era_ihud_bhs_keep_while_hurt_desc"><text>Requires "Show health when taking damage". When damage reveals the BHS panel, keep it on screen for as long as you stay hurt (health or psy not full), ignoring the auto-hide timer. You can still hide it manually with the toggle hotkey.</text></string>
 	<string id="ui_mcm_era_ihud_stamina_on_drain"><text>Show stamina bar when sprinting</text></string>
 	<string id="ui_mcm_era_ihud_stamina_on_drain_desc"><text>While the BHS panel is hidden, reveal just the stamina bar (and its icon) once you have spent about 10% of your stamina, and keep it shown until it refills. The full body-health panel (BHS) still shows its stamina bar as normal when it is revealed.</text></string>
 	<string id="ui_mcm_era_ihud_ammo"><text>Ammo and weapon HUD</text></string>

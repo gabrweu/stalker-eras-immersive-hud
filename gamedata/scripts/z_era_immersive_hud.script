@@ -10,6 +10,8 @@ local is_inventory_open          = false -- set while the inventory / PDA is ope
 local bhs_reveal_on_damage_timer = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive)
 local full_hud_timer             = 0     -- time_global() deadline for the auto-hide-after-showing timer (0 = inactive)
 local last_actor_health          = nil   -- previous frame's actor health, for detecting real damage (a health drop)
+local last_actor_psy_health      = nil   -- previous frame's psy health, for detecting psy damage (a drop)
+local bhs_keep_while_hurt        = false -- sticky on-damage reveal (kept while the actor is hurt)
 
 local function mcm_get(key)
     if ui_mcm then
@@ -66,9 +68,18 @@ end
 
 local BHS_STATIC_NAMES = build_bhs_static_names()
 
+local function damage_reveal_active()
+    return bhs_reveal_on_damage_timer > 0 or bhs_keep_while_hurt
+end
+
 local function bhs_should_display()
-    if bhs_reveal_on_damage_timer > 0 then return true end
+    if damage_reveal_active() then return true end
     return should_display_for_setting_key(KEYS.mode_bhs, true) -- reveals while inventory is open (if setting is enabled)
+end
+
+local function get_actor_psy_health()
+    if arszi_psy and arszi_psy.get_psy_health then return arszi_psy.get_psy_health() end
+    return db.actor.psy_health -- stock Anomaly. Needs testing without GAMMA
 end
 
 local function set_bhs_visible(visible)
@@ -85,13 +96,16 @@ local function set_bhs_visible(visible)
 
     local mg = ActorMenu.get_maingame()
     if mg and mg.m_ui_hud_states then
-        mg.m_ui_hud_states.m_ui_psy_bar_show = visible and true or false
+        mg.m_ui_hud_states.m_ui_psy_bar_show = visible and true or false -- BHS folds in the vanilla psy bar
     end
 end
 
 local STAMINA_REVEAL_BELOW = 0.9
 local STAMINA_REFILLED_AT  = 0.99 -- avoids flickering
-local DAMAGE_HEALTH_DROP   = 0.0293
+local is_stamina_showing   = false
+
+local DAMAGE_PSY_DROP      = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
+local RECOVERED_AT         = 0.999 -- health/psy at/above this = "fully recovered"
 
 local STAMINA_STATIC_NAMES = {}
 for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
@@ -99,8 +113,6 @@ for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
         STAMINA_STATIC_NAMES[#STAMINA_STATIC_NAMES + 1] = base .. suf
     end
 end
-
-local is_stamina_showing = false -- our on-drain reveal is currently active (only while the full BHS is hidden)
 
 local function set_stamina_visible(visible)
     local hud = get_hud()
@@ -115,6 +127,8 @@ local function set_stamina_visible(visible)
     end
 end
 
+local apply_hud_visibility_logic -- forward declaration (defined below)
+
 local function apply_bhs_visibility()
     local bhs_on = bhs_should_display()
     set_bhs_visible(bhs_on)
@@ -124,6 +138,17 @@ local function apply_bhs_visibility()
     elseif is_stamina_showing then
         set_stamina_visible(true) -- set_bhs_visible(false) just hid it; bring our reveal back
     end
+end
+
+local function actor_is_hurt()
+    return db.actor.health < RECOVERED_AT or get_actor_psy_health() < RECOVERED_AT
+end
+
+local function trigger_bhs_damage_reveal()
+    local was_inactive = (bhs_reveal_on_damage_timer == 0)
+    bhs_reveal_on_damage_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
+    if settings_cache.reveal_bhs_keep_while_hurt then bhs_keep_while_hurt = true end
+    if was_inactive then apply_hud_visibility_logic() end
 end
 
 local function update_stamina_reveal()
@@ -184,7 +209,6 @@ local function set_pda_messages_visible(visible)
     local got, p = pcall(w.GetWndPos, w)
     if not (got and p) then return end
 
-    -- Are we currently holding it at our own off-screen park spot (home_y + OFFSCREEN)?
     local parked = pda_messages_home_y and p.y >= pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y - 1
 
     if not parked and p.y < PDA_MSGS_ONSCREEN_MAX then
@@ -277,13 +301,13 @@ local function set_companion_visible(visible)
     hud:Show(visible and true or false)
 end
 
-local function apply_hud_visibility_logic()
+function apply_hud_visibility_logic()
     if not (db and db.actor) then return end
 
     apply_bhs_visibility()
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
-    set_status_visible(should_display_for_setting_key(KEYS.mode_statuses, true))
+    set_status_visible(damage_reveal_active() or should_display_for_setting_key(KEYS.mode_statuses, true))
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
     set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
@@ -322,21 +346,32 @@ local function actor_on_update_callback()
 
     if settings_cache.reveal_bhs_on_damage then
         local hp = db.actor.health
-        if last_actor_health and hp > 0 and hp < last_actor_health - DAMAGE_HEALTH_DROP then
-            local was_inactive = (bhs_reveal_on_damage_timer == 0)
-            bhs_reveal_on_damage_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
-            if was_inactive then apply_bhs_visibility() end
+        if last_actor_health and hp > 0 and hp < last_actor_health - 0.0293 then
+            trigger_bhs_damage_reveal()
         end
         last_actor_health = hp
+
+        local psy = get_actor_psy_health()
+        if last_actor_psy_health and psy < last_actor_psy_health - DAMAGE_PSY_DROP then
+            trigger_bhs_damage_reveal()
+        end
+        last_actor_psy_health = psy
     else
-        last_actor_health = db.actor.health
+        last_actor_health     = db.actor.health
+        last_actor_psy_health = get_actor_psy_health()
     end
 
-    if bhs_reveal_on_damage_timer == 0 then return end
-    if time_global() < bhs_reveal_on_damage_timer then return end
+    if bhs_reveal_on_damage_timer > 0 and time_global() >= bhs_reveal_on_damage_timer then
+        bhs_reveal_on_damage_timer = 0
+        apply_hud_visibility_logic()
+    end
 
-    bhs_reveal_on_damage_timer = 0
-    apply_bhs_visibility()
+    if bhs_keep_while_hurt and (not settings_cache.reveal_bhs_on_damage
+            or not settings_cache.reveal_bhs_keep_while_hurt
+            or not actor_is_hurt()) then
+        bhs_keep_while_hurt = false
+        apply_hud_visibility_logic()
+    end
 end
 
 local function on_key_press_callback(dik)
@@ -358,6 +393,14 @@ local function on_key_press_callback(dik)
 
     if not toggle_modifier_held(settings_cache.toggle_modifier) then return end
 
+    if not is_hud_showing and (bhs_reveal_on_damage_timer > 0 or bhs_keep_while_hurt) then
+        full_hud_timer             = 0
+        bhs_reveal_on_damage_timer = 0
+        bhs_keep_while_hurt        = false
+        apply_hud_visibility_logic()
+        return
+    end
+
     is_hud_showing = not is_hud_showing
 
     if is_hud_showing then
@@ -367,6 +410,7 @@ local function on_key_press_callback(dik)
     else
         full_hud_timer             = 0
         bhs_reveal_on_damage_timer = 0
+        bhs_keep_while_hurt        = false
     end
 
     apply_hud_visibility_logic()
@@ -389,10 +433,12 @@ function on_game_start()
     is_hud_showing                           = false
     is_inventory_open                        = false
     is_stamina_showing                       = false
+    bhs_keep_while_hurt                      = false
 
     bhs_reveal_on_damage_timer               = 0
     full_hud_timer                           = 0
     last_actor_health                        = nil
+    last_actor_psy_health                    = nil
 
     pda_notification_icon_home_x             = nil
     pda_messages_home_x, pda_messages_home_y = nil, nil
