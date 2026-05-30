@@ -6,10 +6,11 @@ local MODE_CONTENT = {
     { MODE.KEY,  "era_ihud_mode_key" },
 }
 
-local function mode_row(key, hint)
+local function mode_row(key, hint, def)
+    def = def or MODE.KEY
     return {
         key = key,
-        def = MODE.KEY,
+        def = def,
         mcm = { type = "radio_h", val = 2, hint = hint, content = MODE_CONTENT },
     }
 end
@@ -46,7 +47,7 @@ SETTINGS = {
     mode_row("mode_statuses", "era_ihud_statuses"),
     mode_row("mode_pda_messages", "era_ihud_pda_messages"),
     mode_row("mode_pda_notification", "era_ihud_pda_notification"),
-    mode_row("mode_other_mods", "era_ihud_other_mods"),
+    mode_row("mode_other_mods", "era_ihud_other_mods", MODE.SHOW),
 }
 
 KEYS = {}

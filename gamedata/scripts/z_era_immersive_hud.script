@@ -190,182 +190,6 @@ local function set_status_visible(visible)
     pcall(hud.SetWndPos, hud, vector2():set(status_icons_home_x, y))
 end
 
-
----------------------------------------------------------------------------------------------
--- Other-mod-overlays and HUDs catch-all. EXPERIMENTAL.
--- there are static overlay names and dynamically added HUDs. There might be other ways to add UI, need to test with more mods.
--- for ones we actually know there's KNOWN_OVERLAY_DIALOGS.
--- heavy Claude used here; needs more testing and reviewing.
-
-local tracked_overlay_dialogs = {}    -- set: registered dialog -> true
-local tracked_overlay_statics = {}    -- set: custom-static name -> true
-local overlay_hook_installed  = false -- process-level: install the metatable hook only once
-
-local KNOWN_OVERLAY_DIALOGS   = {
-    -- function() return mag_hud and mag_hud.HUD end,
-}
-
-local function is_excluded_overlay_static(name)
-    return BHS_STATIC_SET[name] or name == "notify_icon"
-end
-
-local function is_excluded_overlay_dialog(dlg)
-    -- actor_status.HUD is the status-icons dialog, driven by set_status_visible.
-    return actor_status ~= nil and actor_status.HUD ~= nil and rawequal(dlg, actor_status.HUD)
-end
-
--- We only ever un-hide what we actually hid, so revealing overlays can't force-show a HUD a mod
--- deliberately kept hidden. These sets remember exactly what the catch-all parked.
-local overlay_hidden_dialogs = {} -- set: dialog we hid -> true
-local overlay_hidden_statics = {} -- set: static name we hid -> true
-
-local function hide_overlay_dialog(dlg)
-    if dlg and dlg.Show and not is_excluded_overlay_dialog(dlg) then
-        pcall(dlg.Show, dlg, false)
-        overlay_hidden_dialogs[dlg] = true
-    end
-end
-
-local function hide_overlay_static(name)
-    if is_excluded_overlay_static(name) then return end
-    local hud = get_hud()
-    if not (hud and hud.GetCustomStatic) then return end
-    local cs = hud:GetCustomStatic(name)
-    local wnd = cs and cs:wnd()
-    if wnd then
-        pcall(wnd.Show, wnd, false)
-        overlay_hidden_statics[name] = true
-    end
-end
-
-local function restore_hidden_overlays()
-    for dlg, _ in pairs(overlay_hidden_dialogs) do
-        if dlg.Show then pcall(dlg.Show, dlg, true) end
-    end
-    overlay_hidden_dialogs = {}
-
-    local hud = get_hud()
-    for name, _ in pairs(overlay_hidden_statics) do
-        if hud and hud.GetCustomStatic then
-            local cs = hud:GetCustomStatic(name)
-            local wnd = cs and cs:wnd()
-            if wnd then pcall(wnd.Show, wnd, true) end
-        end
-    end
-    overlay_hidden_statics = {}
-end
-
-local function set_overlay_visible(visible)
-    if visible then
-        restore_hidden_overlays() -- un-hide only what we hid; leave mod-controlled state alone
-        return
-    end
-
-    local seen = {}
-    for dlg, _ in pairs(tracked_overlay_dialogs) do
-        if not seen[dlg] then
-            seen[dlg] = true
-            hide_overlay_dialog(dlg)
-        end
-    end
-    for _, resolver in ipairs(KNOWN_OVERLAY_DIALOGS) do
-        local ok, dlg = pcall(resolver)
-        if ok and dlg and not seen[dlg] then
-            seen[dlg] = true
-            hide_overlay_dialog(dlg)
-        end
-    end
-    for name, _ in pairs(tracked_overlay_statics) do
-        hide_overlay_static(name)
-    end
-end
-
-local function overlays_should_display()
-    return should_display_for_setting_key(KEYS.mode_other_mods)
-end
-
--- Intercept the HUD's dialog/static registration so we observe everything mods add. Installed once
--- per process, the first time get_hud() is valid; handles both table- and function-typed __index.
-local function install_overlay_hook()
-    if overlay_hook_installed then return end
-
-    local hud = get_hud()
-    if not hud then return end
-    local mt = getmetatable(hud)
-    local idx = mt and mt.__index
-    if not idx then return end
-
-    local function on_add_dialog(_self, dlg)
-        if dlg and not is_excluded_overlay_dialog(dlg) then
-            tracked_overlay_dialogs[dlg] = true
-            if not overlays_should_display() then hide_overlay_dialog(dlg) end
-        end
-    end
-    local function on_remove_dialog(_self, dlg)
-        if dlg then
-            tracked_overlay_dialogs[dlg] = nil
-            overlay_hidden_dialogs[dlg] = nil
-        end
-    end
-    local function on_add_static(_self, name)
-        if type(name) == "string" and not is_excluded_overlay_static(name) then
-            tracked_overlay_statics[name] = true
-            if not overlays_should_display() then hide_overlay_static(name) end
-        end
-    end
-    local function on_remove_static(_self, name)
-        if type(name) == "string" then
-            tracked_overlay_statics[name] = nil
-            overlay_hidden_statics[name] = nil
-        end
-    end
-
-    if type(idx) == "table" then
-        -- Clean path: wrap the four methods directly in the shared method table (no per-call cost).
-        local function wrap(method_name, observer)
-            local original = idx[method_name]
-            if type(original) ~= "function" then return end
-            idx[method_name] = function(self, a, b)
-                local r = original(self, a, b)
-                observer(self, a)
-                return r
-            end
-        end
-        wrap("AddDialogToRender", on_add_dialog)
-        wrap("RemoveDialogToRender", on_remove_dialog)
-        wrap("AddCustomStatic", on_add_static)
-        wrap("RemoveCustomStatic", on_remove_static)
-        overlay_hook_installed = true
-    elseif type(idx) == "function" then
-        -- luabind function __index: front it with a dispatcher returning cached wrapped closures for
-        -- our four targets, passing every other method lookup straight through unchanged.
-        local original_index = idx
-        local observers = {
-            AddDialogToRender    = on_add_dialog,
-            RemoveDialogToRender = on_remove_dialog,
-            AddCustomStatic      = on_add_static,
-            RemoveCustomStatic   = on_remove_static,
-        }
-        local wrapped_cache = {}
-        mt.__index = function(self, key)
-            local observer = observers[key]
-            if not observer then return original_index(self, key) end
-            local cached = wrapped_cache[key]
-            if not cached then
-                cached = function(s, a, b)
-                    local r = original_index(s, key)(s, a, b)
-                    observer(s, a)
-                    return r
-                end
-                wrapped_cache[key] = cached
-            end
-            return cached
-        end
-        overlay_hook_installed = true
-    end
-end
-
-
 ---------------------------------------------------------------------------------------------
 
 local function set_minimap_visible(visible)
@@ -407,8 +231,10 @@ local function actor_on_before_hit_callback(shit)
     if not (shit and shit.power and shit.power > 0) then return end -- ignore 0-damage hits
 
     local duration = (settings_cache.reveal_duration or 5) * 1000
+    -- Only run the (133-static) show loop on the leading edge; continuous damage just extends the
+    -- deadline. The expiry path in actor_on_update_callback restores visibility afterwards.
+    if bhs_reveal_for_time == 0 then set_bhs_visible(true) end
     bhs_reveal_for_time = time_global() + duration
-    set_bhs_visible(true)
 end
 
 local applied_initial = false
@@ -416,7 +242,9 @@ local applied_initial = false
 local function actor_on_update_callback()
     if not applied_initial and db and db.actor then
         applied_initial = true
-        install_overlay_hook() -- get_hud() is valid by now; observe mod HUD registrations
+        -- Only observe mod HUD registrations when the catch-all is actually in use; otherwise the
+        -- global metatable hook is pure overhead. get_hud() is valid by now.
+        if overlay_feature_active() then install_overlay_hook() end
         apply_hud_visibility_logic()
     end
 
@@ -452,6 +280,10 @@ end
 
 local function on_option_change_callback()
     reload_settings_cache()
+    -- User may have just switched the catch-all into a hiding mode; install the hook now if so.
+    -- Idempotent (overlay_hook_installed guard), and leaving it installed afterwards is safe since
+    -- set_overlay_visible only un-hides what it hid.
+    if applied_initial and overlay_feature_active() then install_overlay_hook() end
     apply_hud_visibility_logic()
 end
 
@@ -471,13 +303,6 @@ function on_game_start()
     pda_notification_icon_home_x             = nil
     pda_messages_home_x, pda_messages_home_y = nil, nil
     status_icons_home_x, status_icons_home_y = nil, nil
-
-    -- Drop stale dialog instances from a prior load; mods re-register their HUDs after load and the
-    -- metatable hook (installed once, kept across loads) re-tracks them.
-    tracked_overlay_dialogs                  = {}
-    tracked_overlay_statics                  = {}
-    overlay_hidden_dialogs                   = {}
-    overlay_hidden_statics                   = {}
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
