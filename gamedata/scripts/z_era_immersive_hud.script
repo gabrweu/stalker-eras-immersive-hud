@@ -1,10 +1,13 @@
 -- Era's Immersive HUD
 
-local MODE           = z_era_immersive_hud_config.MODE
-local KEYS           = z_era_immersive_hud_config.KEYS
-local settings_cache = z_era_immersive_hud_config.DEFAULTS
+local MODE                = z_era_immersive_hud_config.MODE
+local KEYS                = z_era_immersive_hud_config.KEYS
+local settings_cache      = z_era_immersive_hud_config.DEFAULTS
 
-local is_hud_showing = false
+-- Reveal state. Each is independent; an element shows if any active source asks for it.
+local is_hud_showing      = false -- toggled by the hotkey
+local is_inventory_open   = false -- set while the inventory / PDA is open
+local bhs_reveal_for_time = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive)
 
 local function mcm_get(key)
     if ui_mcm then
@@ -21,57 +24,33 @@ local function reload_settings_cache()
     end
 end
 
--- local function util_get_maingame_safe()
---     if not ActorMenu or not ActorMenu.get_maingame then return nil end
---     local ok, mg = pcall(ActorMenu.get_maingame)
---     if not ok then return nil end
---     return mg
--- end
-
--- local function util_get_hud_safe()
---     if not get_hud then return nil end
---     local ok, h = pcall(get_hud)
---     if not ok then return nil end
---     return h
--- end
-
--- -- I don't understand this tbh
--- local function _newidx(t, k, v) t[k] = v end
--- local function util_safe_set_for_pcall(t, k, v)
---     if t == nil then return false end
---     return (pcall(_newidx, t, k, v))
--- end
-
 ---------------------------------------------------------------------------------------------
 
--- local BHS_PARTS          = { "head", "torso", "rightarm", "leftarm", "rightleg", "leftleg" }
--- local BHS_RATIO_SUFFIXES = { "_43", "_1610", "_169", "_219", "_2110", "_1612" }
+local BHS_PARTS          = { "head", "torso", "rightarm", "leftarm", "rightleg", "leftleg" }
+local BHS_RATIO_SUFFIXES = { "", "_43", "_1610", "_169", "_219", "_2110", "_1612" }
 
--- local function build_bhs_static_names()
---     local element_names = {
---         "body_health_system", "body_health_system_text", "cop_debug", "bhs_garbage",
---         "bhs_stamina_bar", "bhs_stamina_bar_bg", "bhs_health_bar",
---     }
+local function build_bhs_static_names()
+    local base_names = {
+        "body_health_system", "body_health_system_text", "cop_debug", "bhs_garbage",
+        "bhs_stamina_bar", "bhs_stamina_bar_bg", "bhs_health_bar",
+    }
 
---     for _, part in ipairs(BHS_PARTS) do
---         element_names[#element_names + 1] = "bhs_health_" .. part .. "_bar"
---         element_names[#element_names + 1] = "bhs_health_" .. part .. "_bar_green"
---     end
+    for _, part in ipairs(BHS_PARTS) do
+        base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar"
+        base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_green"
+    end
 
---     -- BHS recreates each static per aspect ratio with specific suffixes.
---     local final_names_with_suffix = {}
---     for _, name in ipairs(element_names) do
---         final_names_with_suffix[#final_names_with_suffix + 1] = name
+    local names = {}
+    for _, name in ipairs(base_names) do
+        for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+            names[#names + 1] = name .. suf
+        end
+    end
 
---         for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
---             final_names_with_suffix[#final_names_with_suffix + 1] = name .. suf
---         end
---     end
+    return names
+end
 
---     return final_names_with_suffix
--- end
-
--- local BHS_STATIC_NAMES = build_bhs_static_names()
+local BHS_STATIC_NAMES = build_bhs_static_names()
 
 ---------------------------------------------------------------------------------------------
 
@@ -81,59 +60,87 @@ local function should_display_for_setting_key(element)
     if mode == MODE.HIDE then return false end
 
     if is_hud_showing then return true end
+    if is_inventory_open and settings_cache.reveal_during_inventory then return true end
 
     return false
 end
 
-local function apply_ui_toggle_logic()
-    local should_display_ammo                  = should_display_for_setting_key(KEYS.mode_ammo)
-    local should_display_bhs                   = should_display_for_setting_key(KEYS.mode_bhs)
-    local should_display_minimap               = should_display_for_setting_key(KEYS.mode_minimap)
-    local should_display_statuses              = should_display_for_setting_key(KEYS.mode_statuses)
-    local should_display_all_other_mods        = should_display_for_setting_key(KEYS.mode_other_mods)
-    local should_display_pda_messages          = should_display_for_setting_key(KEYS.mode_pda_messages)
-    local should_display_pda_icon_notification = should_display_for_setting_key(KEYS.mode_pda_notification)
+local function bhs_should_display()
+    if bhs_reveal_for_time > 0 then return true end
+    return should_display_for_setting_key(KEYS.mode_bhs)
+end
 
-    local maingameui                           = ActorMenu.get_maingame()
+local function set_minimap_visible(visible)
+    local mg = ActorMenu.get_maingame()
+    if not mg or not mg.UIZoneMap then return end
 
-    if maingameui then
-        if maingameui.UIZoneMap then
-            maingameui.UIZoneMap.disabled = not should_display_minimap
-            maingameui.UIMotionIcon:Show(should_display_minimap and true or false)
+    mg.UIZoneMap.disabled = not visible
+    mg.UIMotionIcon:Show(visible and true or false)
+end
 
-            -- should we overwrite the user's settings? probably not
-            -- if ui_options and ui_options.set then
-            --     pcall(ui_options.set, "video/hud/show_minimap", should_display_minimap and true or false)
-            -- end
+local function set_bhs_visible(visible)
+    local hud = get_hud()
+    if not hud or not hud.GetCustomStatic then return end
+
+    for _, name in ipairs(BHS_STATIC_NAMES) do
+        local st = hud:GetCustomStatic(name)
+        if st then
+            local wnd = st:wnd()
+            if wnd then wnd:Show(visible and true or false) end
         end
     end
+end
 
-    local hud = pcall(get_hud)
-    -- bruh
+-- Applies the current reveal state to every managed element.
+local function apply_hud_visibility_logic()
+    if not (db and db.actor) then return end
+
+    set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
+    set_bhs_visible(bhs_should_display())
+
+    -- TODO: ammo / statuses / other-mod overlays / PDA messages / notification routed here too.
 end
 
 ---------------------------------------------------------------------------------------------
 
--- local function actor_menu_on_mode_changed_callback(mode, last_mode)
---     if mode == 1 then
---         apply_inventory_ui_logic(true)
---     elseif last_mode == 1 then
---         apply_inventory_ui_logic(false)
---     else
---         return
---     end
--- end
+local function actor_menu_on_mode_changed_callback(mode, last_mode)
+    if mode == 1 then
+        is_inventory_open = true
+        apply_hud_visibility_logic()
+    elseif last_mode == 1 then
+        is_inventory_open = false
+        apply_hud_visibility_logic()
+    end
+end
 
--- local function actor_on_before_hit_callback(shit)
+local function actor_on_before_hit_callback(shit)
+    if not settings_cache.reveal_bhs_on_damage then return end
 
--- end
+    local duration = (settings_cache.reveal_duration or 5) * 1000
+    bhs_reveal_for_time = time_global() + duration
+    set_bhs_visible(true)
+end
+
+local applied_initial = false
+
+local function actor_on_update_callback()
+    if not applied_initial and db and db.actor then
+        applied_initial = true
+        apply_hud_visibility_logic()
+    end
+
+    if bhs_reveal_for_time == 0 then return end
+    if time_global() < bhs_reveal_for_time then return end
+
+    bhs_reveal_for_time = 0
+    set_bhs_visible(bhs_should_display())
+end
 
 local function on_key_press_callback(dik)
     if not (db and db.actor) then return end
     if level.main_input_receiver and level.main_input_receiver() then return end
     if not settings_cache.toggle_key or settings_cache.toggle_key == 0 then return end
     if dik ~= settings_cache.toggle_key then return end
-
 
     local function toggle_modifier_held(mod_id)
         -- 0=none 1=shift 2=ctrl 3=alt
@@ -149,22 +156,25 @@ local function on_key_press_callback(dik)
     if not toggle_modifier_held(settings_cache.toggle_modifier) then return end
 
     is_hud_showing = not is_hud_showing
-    apply_ui_toggle_logic()
+    apply_hud_visibility_logic()
 end
 
 local function on_option_change_callback()
     reload_settings_cache()
-    if db and db.actor then apply_ui_toggle_logic() end
+    apply_hud_visibility_logic()
 end
 
 function on_game_start()
     reload_settings_cache()
 
+    is_hud_showing      = false
+    is_inventory_open   = false
+    bhs_reveal_for_time = 0
+    applied_initial     = false
+
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
-    -- RegisterScriptCallback("actor_on_first_update", actor_on_first_update_callback)
-    -- RegisterScriptCallback("actor_on_net_destroy", actor_on_net_destroy_callback)
-    -- RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit_callback)
-    -- RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
-    -- RegisterScriptCallback("on_news_received", on_news_received_callback)
+    RegisterScriptCallback("actor_on_update", actor_on_update_callback)
+    RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit_callback)
+    RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
 end
