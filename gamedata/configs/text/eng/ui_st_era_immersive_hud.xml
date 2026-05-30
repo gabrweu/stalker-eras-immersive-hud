@@ -17,14 +17,14 @@
 	<string id="ui_mcm_era_ihud_reveal_inventory_desc"><text>While your inventory or PDA is open, show BHS health HUD and status effects.</text></string>
 	<string id="ui_mcm_era_ihud_bhs_on_damage"><text>Show health when taking damage</text></string>
 	<string id="ui_mcm_era_ihud_bhs_on_damage_desc"><text>When you take a hit, briefly show the BHS panel even if it is set to "Always hide" or currently hidden.</text></string>
+	<string id="ui_mcm_era_ihud_stamina_on_drain"><text>Show stamina bar when sprinting</text></string>
+	<string id="ui_mcm_era_ihud_stamina_on_drain_desc"><text>While the BHS panel is hidden, reveal just the stamina bar (and its icon) once you have spent about 10% of your stamina, and keep it shown until it refills. The full body-health panel (BHS) still shows its stamina bar as normal when it is revealed.</text></string>
 	<string id="ui_mcm_era_ihud_ammo"><text>Ammo and weapon HUD</text></string>
 	<string id="ui_mcm_era_ihud_minimap"><text>Minimap</text></string>
 	<string id="ui_mcm_era_ihud_bhs"><text>Body-health panel (BHS)</text></string>
 	<string id="ui_mcm_era_ihud_body_health_desc"><text>BHS and psy health bar.</text></string>
 	<string id="ui_mcm_era_ihud_statuses"><text>Status effect icons</text></string>
 	<string id="ui_mcm_era_ihud_status_desc"><text>The status-effect icons such as hunger, thirst, radiation, bleeding, etc.</text></string>
-	<string id="ui_mcm_era_ihud_other_mods"><text>Other mods - EXPERIMENTAL!</text></string>
-	<string id="ui_mcm_era_ihud_other_mods_desc"><text>A catch-all for HUD elements that other mods add through the standard interfaces - kill feeds, side panels, ammo checkers, and similar. Might not play nice with EVERY mod out there; experimental!</text></string>
 	<string id="ui_mcm_era_ihud_pda_messages"><text>PDA messages</text></string>
 	<string id="ui_mcm_era_ihud_pda_messages_desc"><text>The bottom-left news pop-ups (pickups, tips, task updates, faction messages).</text></string>
 	<string id="ui_mcm_era_ihud_pda_notification"><text>PDA notification icon</text></string>

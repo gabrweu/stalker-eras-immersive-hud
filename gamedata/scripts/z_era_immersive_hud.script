@@ -1,13 +1,15 @@
 -- Era's Immersive HUD
 
-local MODE                = z_era_immersive_hud_config.MODE
-local KEYS                = z_era_immersive_hud_config.KEYS
-local settings_cache      = z_era_immersive_hud_config.DEFAULTS
+local MODE                       = z_era_immersive_hud_config.MODE
+local KEYS                       = z_era_immersive_hud_config.KEYS
+local settings_cache             = z_era_immersive_hud_config.DEFAULTS
 
 -- Reveal state. Each is independent; an element shows if any active source asks for it.
-local is_hud_showing      = false -- toggled by the hotkey
-local is_inventory_open   = false -- set while the inventory / PDA is open
-local bhs_reveal_for_time = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive)
+local is_hud_showing             = false -- toggled by the hotkey
+local is_inventory_open          = false -- set while the inventory / PDA is open
+local bhs_reveal_on_damage_timer = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive)
+local full_hud_timer             = 0     -- time_global() deadline for the auto-hide-after-showing timer (0 = inactive)
+local last_actor_health          = nil   -- previous frame's actor health, for detecting real damage (a health drop)
 
 local function mcm_get(key)
     if ui_mcm then
@@ -63,11 +65,9 @@ local function build_bhs_static_names()
 end
 
 local BHS_STATIC_NAMES = build_bhs_static_names()
-local BHS_STATIC_SET = {}
-for _, name in ipairs(BHS_STATIC_NAMES) do BHS_STATIC_SET[name] = true end
 
 local function bhs_should_display()
-    if bhs_reveal_for_time > 0 then return true end
+    if bhs_reveal_on_damage_timer > 0 then return true end
     return should_display_for_setting_key(KEYS.mode_bhs, true) -- reveals while inventory is open (if setting is enabled)
 end
 
@@ -86,6 +86,63 @@ local function set_bhs_visible(visible)
     local mg = ActorMenu.get_maingame()
     if mg and mg.m_ui_hud_states then
         mg.m_ui_hud_states.m_ui_psy_bar_show = visible and true or false
+    end
+end
+
+local STAMINA_REVEAL_BELOW = 0.9
+local STAMINA_REFILLED_AT  = 0.99 -- avoids flickering
+
+local STAMINA_STATIC_NAMES = {}
+for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
+    for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+        STAMINA_STATIC_NAMES[#STAMINA_STATIC_NAMES + 1] = base .. suf
+    end
+end
+
+local is_stamina_showing = false -- our on-drain reveal is currently active (only while the full BHS is hidden)
+
+local function set_stamina_visible(visible)
+    local hud = get_hud()
+    if not hud or not hud.GetCustomStatic then return end
+
+    for _, name in ipairs(STAMINA_STATIC_NAMES) do
+        local st = hud:GetCustomStatic(name)
+        if st then
+            local wnd = st:wnd()
+            if wnd then wnd:Show(visible and true or false) end
+        end
+    end
+end
+
+local function apply_bhs_visibility()
+    local bhs_on = bhs_should_display()
+    set_bhs_visible(bhs_on)
+
+    if bhs_on then
+        is_stamina_showing = false
+    elseif is_stamina_showing then
+        set_stamina_visible(true) -- set_bhs_visible(false) just hid it; bring our reveal back
+    end
+end
+
+local function update_stamina_reveal()
+    if not settings_cache.reveal_stamina_on_drain or bhs_should_display() then
+        if is_stamina_showing then
+            is_stamina_showing = false
+            if not bhs_should_display() then set_stamina_visible(false) end
+        end
+        return
+    end
+
+    local power = db.actor.power
+    if not is_stamina_showing then
+        if power < STAMINA_REVEAL_BELOW then
+            is_stamina_showing = true
+            set_stamina_visible(true)
+        end
+    elseif power >= STAMINA_REFILLED_AT then
+        is_stamina_showing = false
+        set_stamina_visible(false)
     end
 end
 
@@ -158,7 +215,6 @@ local function set_pda_notification_visible(visible)
     wnd:SetWndPos(pos)
 end
 
--- Hook the engine's notification setter so a freshly-created icon immediately obeys our state.
 if actor_menu and actor_menu.set_notification and not actor_menu.__era_ihud_notif_hooked then
     local original_set_notification = actor_menu.set_notification
 
@@ -180,7 +236,7 @@ local function set_status_visible(visible)
     local hud = actor_status.HUD
     if not (hud and hud.GetWndPos and hud.SetWndPos) then return end -- dialog not built yet
 
-    if not status_icons_home_y then                                  -- capture home BEFORE the first move, or we can't restore it
+    if not status_icons_home_y then
         local ok, p = pcall(hud.GetWndPos, hud)
         if not (ok and p) then return end
         status_icons_home_x, status_icons_home_y = p.x, p.y
@@ -205,12 +261,11 @@ local function apply_hud_visibility_logic()
     if not (db and db.actor) then return end
 
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
-    set_bhs_visible(bhs_should_display())
+    apply_bhs_visibility()
     set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
     set_status_visible(should_display_for_setting_key(KEYS.mode_statuses, true))
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
-    set_overlay_visible(should_display_for_setting_key(KEYS.mode_other_mods))
 end
 
 
@@ -226,33 +281,41 @@ local function actor_menu_on_mode_changed_callback(mode, last_mode)
     end
 end
 
-local function actor_on_before_hit_callback(shit)
-    if not settings_cache.reveal_bhs_on_damage then return end
-    if not (shit and shit.power and shit.power > 0) then return end -- ignore 0-damage hits
-
-    local duration = (settings_cache.reveal_duration or 5) * 1000
-    -- Only run the (133-static) show loop on the leading edge; continuous damage just extends the
-    -- deadline. The expiry path in actor_on_update_callback restores visibility afterwards.
-    if bhs_reveal_for_time == 0 then set_bhs_visible(true) end
-    bhs_reveal_for_time = time_global() + duration
-end
-
-local applied_initial = false
+local has_applied_initial_settings = false
 
 local function actor_on_update_callback()
-    if not applied_initial and db and db.actor then
-        applied_initial = true
-        -- Only observe mod HUD registrations when the catch-all is actually in use; otherwise the
-        -- global metatable hook is pure overhead. get_hud() is valid by now.
-        if overlay_feature_active() then install_overlay_hook() end
+    if not (db and db.actor) then return end
+
+    if not has_applied_initial_settings then
+        has_applied_initial_settings = true
         apply_hud_visibility_logic()
     end
 
-    if bhs_reveal_for_time == 0 then return end
-    if time_global() < bhs_reveal_for_time then return end
+    update_stamina_reveal()
 
-    bhs_reveal_for_time = 0
-    set_bhs_visible(bhs_should_display())
+    if full_hud_timer > 0 and time_global() >= full_hud_timer then
+        full_hud_timer = 0
+        is_hud_showing = false
+        apply_hud_visibility_logic()
+    end
+
+    if settings_cache.reveal_bhs_on_damage then
+        local hp = db.actor.health
+        if last_actor_health and hp < last_actor_health - 0.001 then
+            local was_inactive = (bhs_reveal_on_damage_timer == 0)
+            bhs_reveal_on_damage_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
+            if was_inactive then apply_bhs_visibility() end
+        end
+        last_actor_health = hp
+    else
+        last_actor_health = db.actor.health
+    end
+
+    if bhs_reveal_on_damage_timer == 0 then return end
+    if time_global() < bhs_reveal_on_damage_timer then return end
+
+    bhs_reveal_on_damage_timer = 0
+    apply_bhs_visibility()
 end
 
 local function on_key_press_callback(dik)
@@ -275,15 +338,21 @@ local function on_key_press_callback(dik)
     if not toggle_modifier_held(settings_cache.toggle_modifier) then return end
 
     is_hud_showing = not is_hud_showing
+
+    if is_hud_showing then
+        full_hud_timer = settings_cache.auto_hide_enabled
+            and (time_global() + (settings_cache.reveal_duration or 5) * 1000)
+            or 0
+    else
+        full_hud_timer             = 0
+        bhs_reveal_on_damage_timer = 0
+    end
+
     apply_hud_visibility_logic()
 end
 
 local function on_option_change_callback()
     reload_settings_cache()
-    -- User may have just switched the catch-all into a hiding mode; install the hook now if so.
-    -- Idempotent (overlay_hook_installed guard), and leaving it installed afterwards is safe since
-    -- set_overlay_visible only un-hides what it hid.
-    if applied_initial and overlay_feature_active() then install_overlay_hook() end
     apply_hud_visibility_logic()
 end
 
@@ -294,11 +363,15 @@ end
 
 function on_game_start()
     reload_settings_cache()
+    has_applied_initial_settings             = false
 
     is_hud_showing                           = false
     is_inventory_open                        = false
-    bhs_reveal_for_time                      = 0
-    applied_initial                          = false
+    is_stamina_showing                       = false
+
+    bhs_reveal_on_damage_timer               = 0
+    full_hud_timer                           = 0
+    last_actor_health                        = nil
 
     pda_notification_icon_home_x             = nil
     pda_messages_home_x, pda_messages_home_y = nil, nil
@@ -307,7 +380,6 @@ function on_game_start()
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
     RegisterScriptCallback("actor_on_update", actor_on_update_callback)
-    RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
     RegisterScriptCallback("on_news_received", on_news_received_callback)
 end

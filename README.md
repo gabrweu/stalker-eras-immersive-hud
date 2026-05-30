@@ -3,6 +3,8 @@ Disable HUD elements with granularity or use a hotkey to toggle them at any time
 
 Idea is to allow for hud customization without overwriting GAMMA files nor using hud_draw nor affecting other mods. As a bonus, making it work for any mod without need for intrinsic support (this is very experimental; needs more testing).
 
+This is specifically done for GAMMA.
+
 Mod contains a single, non-overwriting script file that can toggle or hide:
 - minimap
 - health/BHS hud
