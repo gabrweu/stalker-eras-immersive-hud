@@ -172,6 +172,7 @@ end
 
 
 local PDA_MSGS_OFFSCREEN_Y = 9999
+local PDA_MSGS_ONSCREEN_MAX = PDA_MSGS_OFFSCREEN_Y / 2
 local pda_messages_home_x, pda_messages_home_y = nil, nil
 
 local function set_pda_messages_visible(visible)
@@ -186,8 +187,8 @@ local function set_pda_messages_visible(visible)
     -- Are we currently holding it at our own off-screen park spot (home_y + OFFSCREEN)?
     local parked = pda_messages_home_y and p.y >= pda_messages_home_y + PDA_MSGS_OFFSCREEN_Y - 1
 
-    if not parked then
-        pda_messages_home_x, pda_messages_home_y = p.x, p.y -- live on-screen home
+    if not parked and p.y < PDA_MSGS_ONSCREEN_MAX then
+        pda_messages_home_x, pda_messages_home_y = p.x, p.y -- live on-screen home only
     end
 
     if visible then
