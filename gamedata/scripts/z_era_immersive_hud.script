@@ -103,14 +103,37 @@ local function set_bhs_visible(visible)
     end
 end
 
-local STAMINA_REVEAL_BELOW = 0.9
-local STAMINA_REFILLED_AT  = 0.99 -- avoids flickering
-local is_stamina_showing   = false
+-- BHS owns its custom statics and re-shows them on its own lifecycle (and DART on_dart_post_refresh rebuild).
+local BHS_PROBE_BASES = { "body_health_system", "body_health_system_text", "bhs_health_bar" }
 
-local DAMAGE_PSY_DROP      = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
-local RECOVERED_AT         = 0.999 -- health/psy at/above this = "fully recovered"
+local function bhs_looks_visible()
+    local hud = get_hud()
+    if not hud or not hud.GetCustomStatic then return false end
 
-local STAMINA_STATIC_NAMES = {}
+    for _, base in ipairs(BHS_PROBE_BASES) do
+        for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+            local st = hud:GetCustomStatic(base .. suf)
+            if st then
+                local wnd = st:wnd()
+                if wnd and wnd.IsShown and wnd:IsShown() then return true end
+            end
+        end
+    end
+
+    return false
+end
+
+local BHS_REASSERT_INTERVAL = 250
+local bhs_reassert_next     = 0
+
+local STAMINA_REVEAL_BELOW  = 0.9
+local STAMINA_REFILLED_AT   = 0.99 -- avoids flickering
+local is_stamina_showing    = false
+
+local DAMAGE_PSY_DROP       = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
+local RECOVERED_AT          = 0.999 -- health/psy at/above this = "fully recovered"
+
+local STAMINA_STATIC_NAMES  = {}
 for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
     for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
         STAMINA_STATIC_NAMES[#STAMINA_STATIC_NAMES + 1] = base .. suf
@@ -323,6 +346,18 @@ local function actor_on_update_callback()
 
     update_stamina_reveal()
 
+    -- BHS (or another mod such as DART) can rebuild and re-show its statics after we
+    -- hid them. While BHS should be hidden, re-assert the hide if it has reappeared.
+    -- Unsure how performance could be affected by this at the moment.
+    if not bhs_should_display() then
+        local now = time_global()
+
+        if now >= bhs_reassert_next then
+            bhs_reassert_next = now + BHS_REASSERT_INTERVAL
+            if bhs_looks_visible() then apply_bhs_visibility() end
+        end
+    end
+
     if full_hud_timer > 0 and time_global() >= full_hud_timer then
         full_hud_timer = 0
         is_hud_showing = false
@@ -424,10 +459,15 @@ function on_game_start()
     full_hud_timer               = 0
     last_actor_health            = nil
     last_actor_psy_health        = nil
+    bhs_reassert_next            = 0
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
     RegisterScriptCallback("actor_on_update", actor_on_update_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
     RegisterScriptCallback("on_news_received", on_news_received_callback)
+
+    if dart_module then
+        RegisterScriptCallback("on_dart_post_refresh", apply_hud_visibility_logic)
+    end
 end
