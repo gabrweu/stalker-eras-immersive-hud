@@ -178,27 +178,37 @@ local function trigger_bhs_damage_reveal()
     if was_inactive then apply_hud_visibility_logic() end
 end
 
-local function era_bhs_should_render()
-    return bhs_should_display() or is_stamina_showing -- both are db.actor-free, safe during load
+local bhs_update_hooked = false
+
+-- Re-hide BHS the same tick it rebuilt, before the frame renders.
+local function reassert_bhs_hidden()
+    if not bhs_should_display() then apply_bhs_visibility() end
 end
 
-local function install_bhs_hudupdate_hook()
-    if not (zzz_player_injuries and zzz_player_injuries.HUDUpdate) then
-        return
+-- BHS's HUDUpdate (which builds + animates the bars) is a local function, so it
+-- can't be intercepted from outside. Its only external handle is the global
+-- actor_on_update, which calls HUDUpdate. Wrap that: run BHS's original (it may
+-- build/Show a bar this tick), then immediately re-hide while BHS should be
+-- hidden -- same tick, before render -> the grow animation never draws.
+local function install_bhs_update_hook()
+    if bhs_update_hooked then return end
+    if not (zzz_player_injuries and zzz_player_injuries.actor_on_update) then return end
+    if zzz_player_injuries.__era_ihud_wrapped then bhs_update_hooked = true return end
+
+    local original = zzz_player_injuries.actor_on_update
+    local wrapped = function(...)
+        original(...)
+        pcall(reassert_bhs_hidden) -- never break BHS's no-per-callback-pcall dispatch
     end
 
-    if zzz_player_injuries.__era_ihud_hudupdate_hooked then return end
-
-    local original = zzz_player_injuries.HUDUpdate
-    zzz_player_injuries.HUDUpdate = function(...)
-        if not era_bhs_should_render() then return end -- hidden: never let BHS build/animate
-        zzz_player_injuries.show_hud_type = 2          -- ensure BHS actually builds when shown
-        zzz_player_injuries.healthstatus  = true
-
-        return original(...)
-    end
-
-    zzz_player_injuries.__era_ihud_hudupdate_hooked = true
+    -- The callback registry keys on the function value and dispatches in
+    -- unspecified order, so swap the registered entry (not just the module field)
+    -- to guarantee our re-hide runs as part of BHS's own update.
+    UnregisterScriptCallback("actor_on_update", original)
+    RegisterScriptCallback("actor_on_update", wrapped)
+    zzz_player_injuries.actor_on_update    = wrapped -- route DART onPostRefresh through wrapper too
+    zzz_player_injuries.__era_ihud_wrapped = true
+    bhs_update_hooked = true
 end
 
 local function update_stamina_reveal()
@@ -474,6 +484,12 @@ local function on_news_received_callback()
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
 end
 
+local function actor_on_first_update_callback()
+    -- Install here (not on_game_start): our on_game_start runs before BHS's, so
+    -- BHS hasn't registered its actor_on_update yet at that point.
+    install_bhs_update_hook()
+end
+
 function on_game_start()
     reload_settings_cache()
     has_applied_initial_settings = false
@@ -489,14 +505,12 @@ function on_game_start()
     last_actor_health            = nil
     last_actor_psy_health        = nil
     bhs_reassert_next            = 0
-
-    -- Intercept BHS's HUDUpdate so it can't build (and animate) its statics while we want it hidden.
-    -- This shouldn't fuck with any other mods or original zzz_player_injuries.
-    install_bhs_hudupdate_hook()
+    bhs_update_hooked            = false
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
     RegisterScriptCallback("actor_on_update", actor_on_update_callback)
+    RegisterScriptCallback("actor_on_first_update", actor_on_first_update_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
     RegisterScriptCallback("on_news_received", on_news_received_callback)
 
