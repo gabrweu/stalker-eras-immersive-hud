@@ -51,11 +51,13 @@ local BHS_RATIO_SUFFIXES = { "", "_43", "_1610", "_169", "_219", "_2110", "_1612
 local function build_bhs_static_names()
     local base_names = {
         "body_health_system", "body_health_system_text", "cop_debug", "bhs_garbage",
-        "bhs_stamina_bar", "bhs_stamina_bar_bg", "bhs_health_bar",
+        "bhs_stamina_bar", "bhs_stamina_bar_bg",
+        "bhs_health_bar", "bhs_health_bar_bg", -- _bg is the "minimal background" shown only in HUD mode 1
     }
 
     for _, part in ipairs(BHS_PARTS) do
         base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar"
+        base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_bg"    -- minimal bg (mode 1)
         base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_green"
     end
 
