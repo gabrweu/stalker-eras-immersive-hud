@@ -127,8 +127,9 @@ local BHS_REASSERT_INTERVAL = 250
 local bhs_reassert_next     = 0
 
 local STAMINA_REVEAL_BELOW  = 0.9
-local STAMINA_REFILLED_AT   = 0.99 -- avoids flickering
+local STAMINA_REFILLED_AT   = 0.99  -- avoids flickering
 local is_stamina_showing    = false
+local stamina_reveal_armed  = false -- only reveal on a real drain, not when already-drained at load
 
 local DAMAGE_PSY_DROP       = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
 local RECOVERED_AT          = 0.999 -- health/psy at/above this = "fully recovered"
@@ -177,6 +178,29 @@ local function trigger_bhs_damage_reveal()
     if was_inactive then apply_hud_visibility_logic() end
 end
 
+local function era_bhs_should_render()
+    return bhs_should_display() or is_stamina_showing -- both are db.actor-free, safe during load
+end
+
+local function install_bhs_hudupdate_hook()
+    if not (zzz_player_injuries and zzz_player_injuries.HUDUpdate) then
+        return
+    end
+
+    if zzz_player_injuries.__era_ihud_hudupdate_hooked then return end
+
+    local original = zzz_player_injuries.HUDUpdate
+    zzz_player_injuries.HUDUpdate = function(...)
+        if not era_bhs_should_render() then return end -- hidden: never let BHS build/animate
+        zzz_player_injuries.show_hud_type = 2          -- ensure BHS actually builds when shown
+        zzz_player_injuries.healthstatus  = true
+
+        return original(...)
+    end
+
+    zzz_player_injuries.__era_ihud_hudupdate_hooked = true
+end
+
 local function update_stamina_reveal()
     if not settings_cache.reveal_stamina_on_drain or bhs_should_display() then
         if is_stamina_showing then
@@ -187,8 +211,10 @@ local function update_stamina_reveal()
     end
 
     local power = db.actor.power
+    if power >= STAMINA_REFILLED_AT then stamina_reveal_armed = true end
+
     if not is_stamina_showing then
-        if power < STAMINA_REVEAL_BELOW then
+        if stamina_reveal_armed and power < STAMINA_REVEAL_BELOW then
             is_stamina_showing = true
             set_stamina_visible(true)
         end
@@ -353,7 +379,9 @@ local function actor_on_update_callback()
         local now = time_global()
 
         if now >= bhs_reassert_next then
-            bhs_reassert_next = now + BHS_REASSERT_INTERVAL
+            -- During a stamina-only reveal the hook lets BHS build every part shown, so check each
+            -- frame to hide the non-stamina parts the instant they appear. Otherwise throttle.
+            bhs_reassert_next = now + (is_stamina_showing and 0 or BHS_REASSERT_INTERVAL)
             if bhs_looks_visible() then apply_bhs_visibility() end
         end
     end
@@ -453,6 +481,7 @@ function on_game_start()
     is_hud_showing               = false
     is_inventory_open            = false
     is_stamina_showing           = false
+    stamina_reveal_armed         = false
     bhs_keep_while_hurt          = false
 
     bhs_reveal_on_damage_timer   = 0
@@ -460,6 +489,10 @@ function on_game_start()
     last_actor_health            = nil
     last_actor_psy_health        = nil
     bhs_reassert_next            = 0
+
+    -- Intercept BHS's HUDUpdate so it can't build (and animate) its statics while we want it hidden.
+    -- This shouldn't fuck with any other mods or original zzz_player_injuries.
+    install_bhs_hudupdate_hook()
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
