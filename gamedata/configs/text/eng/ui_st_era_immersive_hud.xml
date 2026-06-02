@@ -13,6 +13,13 @@
 	<string id="ui_mcm_era_ihud_auto_hide"><text>Auto-hide after showing</text></string>
 	<string id="ui_mcm_era_ihud_auto_hide_desc"><text>When enabled, toggling the HUD with the hotkey automatically hides it again after the "Reveal duration" set below (in seconds).</text></string>
 	<string id="ui_mcm_era_ihud_reveal_duration"><text>Reveal duration (seconds)</text></string>
+	<string id="ui_mcm_era_ihud_long_press"><text>Long-press to pin (seconds)</text></string>
+	<string id="ui_mcm_era_ihud_long_press_desc"><text>Hold the toggle hotkey for at least this long to pin the HUD on. A pinned HUD ignores the auto-hide timer and stays visible until you tap the hotkey again to hide it. A quick tap toggles the HUD as normal.</text></string>
+	<string id="ui_mcm_era_ihud_pin_enabled"><text>Long-press to pin (lock) the HUD on</text></string>
+	<string id="ui_mcm_era_ihud_pin_enabled_desc"><text>When enabled, holding the toggle hotkey (for the duration set below) pins the HUD on, ignoring the auto-hide timer until you tap the hotkey again. When disabled, holding the hotkey just toggles the HUD like a normal tap.</text></string>
+	<string id="ui_mcm_era_ihud_show_lock"><text>Show "locked" indicator when pinned</text></string>
+	<string id="ui_mcm_era_ihud_show_lock_desc"><text>While the HUD is pinned on, show a small "[ LOCKED ]" label at the bottom of the screen so you know it is pinned and ignoring the auto-hide timer.</text></string>
+	<string id="ui_st_era_ihud_pinned"><text>[ LOCKED ]</text></string>
 	<string id="ui_mcm_era_ihud_reveal_inventory"><text>Show health and statuses while in inventory</text></string>
 	<string id="ui_mcm_era_ihud_reveal_inventory_desc"><text>While your inventory or PDA is open, show BHS health HUD and status effects.</text></string>
 	<string id="ui_mcm_era_ihud_bhs_on_damage"><text>Show health when taking damage</text></string>

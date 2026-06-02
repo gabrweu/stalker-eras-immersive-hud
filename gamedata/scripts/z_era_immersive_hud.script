@@ -1,20 +1,62 @@
 -- Era's Immersive HUD
+--
+-- CONTENTS
+--   1. Imports & constants
+--   2. Reveal state              -- module-level mutable state, all reset in on_game_start().
+--   3. Settings helpers          -- mcm_get / reload_settings_cache / should_display_for_setting_key.
+--   4. BHS & stamina integration -- the complex part for hiding and such.
+--   5. Other HUD element setters -- ammo, PDA messages/notify, status, minimap, companion.
+--   6. Lock overlay              -- our own padlock-icon UI (UIEraIHudLock).
+--   7. Central dispatch          -- apply_hud_visibility_logic.
+--   8. Input & reveal triggers   -- keys, per-frame update, inventory/damage/stamina.
+--   9. Lifecycle & callbacks     -- on_game_start and the callback registrations.
 
-local MODE                       = z_era_immersive_hud_config.MODE
-local KEYS                       = z_era_immersive_hud_config.KEYS
-local settings_cache             = z_era_immersive_hud_config.DEFAULTS
+-- ===========================================================================
+-- 1. Imports & constants
+-- ===========================================================================
 
-local OFFSCREEN_OFFSET           = 9999
-local OFFSCREEN_MIN_COORD        = OFFSCREEN_OFFSET / 2
+local MODE                               = z_era_immersive_hud_config.MODE
+local KEYS                               = z_era_immersive_hud_config.KEYS
+local settings_cache                     = z_era_immersive_hud_config.DEFAULTS
 
--- Reveal state. Each is independent; an element shows if any active source asks for it.
-local is_hud_showing             = false -- toggled by the hotkey
-local is_inventory_open          = false -- set while the inventory / PDA is open
-local bhs_reveal_on_damage_timer = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive)
-local full_hud_timer             = 0     -- time_global() deadline for the auto-hide-after-showing timer (0 = inactive)
-local last_actor_health          = nil   -- previous frame's actor health, for detecting real damage (a health drop)
-local last_actor_psy_health      = nil   -- previous frame's psy health, for detecting psy damage (a drop)
-local bhs_keep_while_hurt        = false -- sticky on-damage reveal (kept while the actor is hurt)
+local OFFSCREEN_OFFSET                   = 9999
+local OFFSCREEN_MIN_COORD                = OFFSCREEN_OFFSET / 2
+
+local BHS_REASSERT_INTERVAL              = 250
+
+-- TODO: make these configurable by the user maybe?
+local DAMAGE_PSY_DROP                    = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
+local DAMAGE_PSY_RECOVERED_AT            = 0.999 -- health/psy at/above this = "fully recovered"
+
+local STAMINA_REVEAL_BELOW               = 0.9
+local STAMINA_REFILLED_AT                = 0.99
+
+-- ===========================================================================
+-- 2. Reveal state  (module-level mutable state -- all reset in on_game_start)
+-- ===========================================================================
+
+local is_hud_showing                     = false -- toggled by the hotkey
+local is_hud_pinned                      = false -- the HUD is pinned on via long-press (drives the "locked" indicator)
+local is_stamina_showing                 = false
+local is_inventory_open                  = false -- set while the inventory / PDA is open
+
+local key_down_time                      = 0     -- time_global() when the toggle key went down (0 = no press pending). Used for locking the HUD in place.
+local long_press_fired                   = false -- the hold-to-pin already triggered for the current press.
+local bhs_reveal_on_damage_timer         = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive).
+local full_hud_timer                     = 0     -- time_global() deadline for the auto-hide-after-showing timer (0 = inactive).
+
+local is_hud_showing_due_to_actor_damage = false -- sticky on-damage reveal (kept while the actor is hurt).
+local last_actor_health                  = nil   -- previous frame's actor health, for detecting real damage (a health drop)
+local last_actor_psy_health              = nil   -- previous frame's psy health, for detecting psy damage (a drop)
+
+-- TODO: this behavior might not make sense. I.e. if the stamina is already drained when loading we might want to show it?
+local stamina_reveal_armed               = false -- only reveal on a real drain, not when already-drained at load
+
+local bhs_reassert_next                  = 0
+
+-- ===========================================================================
+-- 3. Settings helpers
+-- ===========================================================================
 
 local function mcm_get(key)
     if ui_mcm then
@@ -43,38 +85,43 @@ local function should_display_for_setting_key(element, reveals_on_inventory)
 end
 
 
----------------------------------------------------------------------------------------------
+-- ===========================================================================
+-- 4. BHS & stamina integration  (the complex part -- see CLAUDE.md)
+-- ===========================================================================
 
+-- TODO: figure out if we can generalize these, or catch all of them elsewhere as a callback instead of iterating through all.
 local BHS_PARTS          = { "head", "torso", "rightarm", "leftarm", "rightleg", "leftleg" }
 local BHS_RATIO_SUFFIXES = { "", "_43", "_1610", "_169", "_219", "_2110", "_1612" }
 
-local function build_bhs_static_names()
+local function build_bhs_base_names()
     local base_names = {
         "body_health_system", "body_health_system_text", "cop_debug", "bhs_garbage",
         "bhs_stamina_bar", "bhs_stamina_bar_bg",
-        "bhs_health_bar", "bhs_health_bar_bg", -- _bg is the "minimal background" shown only in HUD mode 1
+        "bhs_health_bar", "bhs_health_bar_bg",
     }
 
     for _, part in ipairs(BHS_PARTS) do
         base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar"
-        base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_bg"    -- minimal bg (mode 1)
+        base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_bg" -- minimal bg (mode 1)
         base_names[#base_names + 1] = "bhs_health_" .. part .. "_bar_green"
     end
 
-    local names = {}
-    for _, name in ipairs(base_names) do
-        for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
-            names[#names + 1] = name .. suf
-        end
-    end
-
-    return names
+    return base_names
 end
 
-local BHS_STATIC_NAMES = build_bhs_static_names()
+local BHS_BASE_NAMES = build_bhs_base_names()
+
+local BHS_NAMES_BY_SUFFIX = {}
+for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+    local t = {}
+    for _, base in ipairs(BHS_BASE_NAMES) do t[#t + 1] = base .. suf end
+    BHS_NAMES_BY_SUFFIX[suf] = t
+end
+
+local bhs_active_suffix = nil -- locked once a variant resolves; narrows the scan
 
 local function damage_reveal_active()
-    return bhs_reveal_on_damage_timer > 0 or bhs_keep_while_hurt
+    return bhs_reveal_on_damage_timer > 0 or is_hud_showing_due_to_actor_damage
 end
 
 local function bhs_should_display()
@@ -91,17 +138,42 @@ local function set_bhs_visible(visible)
     local hud = get_hud()
     if not hud or not hud.GetCustomStatic then return end
 
-    for _, name in ipairs(BHS_STATIC_NAMES) do
-        local st = hud:GetCustomStatic(name)
-        if st then
-            local wnd = st:wnd()
-            if wnd then wnd:Show(visible and true or false) end
+    local show = visible and true or false
+
+    if bhs_active_suffix then
+        local names = BHS_NAMES_BY_SUFFIX[bhs_active_suffix]
+        local found = 0
+        for i = 1, #names do
+            local st = hud:GetCustomStatic(names[i])
+            if st then
+                found = found + 1
+                local wnd = st:wnd()
+                if wnd then wnd:Show(show) end
+            end
+        end
+        -- Variant stopped resolving (e.g. resolution changed) -- re-detect next call.
+        if found == 0 then bhs_active_suffix = nil end
+    else
+        -- Not locked yet (the few frames after load before BHS builds its statics):
+        -- scan every variant and lock onto the first suffix that resolves anything.
+        for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+            local names   = BHS_NAMES_BY_SUFFIX[suf]
+            local matched = false
+            for i = 1, #names do
+                local st = hud:GetCustomStatic(names[i])
+                if st then
+                    matched = true
+                    local wnd = st:wnd()
+                    if wnd then wnd:Show(show) end
+                end
+            end
+            if matched and not bhs_active_suffix then bhs_active_suffix = suf end
         end
     end
 
     local mg = ActorMenu.get_maingame()
     if mg and mg.m_ui_hud_states then
-        mg.m_ui_hud_states.m_ui_psy_bar_show = visible and true or false -- BHS folds in the vanilla psy bar
+        mg.m_ui_hud_states.m_ui_psy_bar_show = show
     end
 end
 
@@ -125,18 +197,7 @@ local function bhs_looks_visible()
     return false
 end
 
-local BHS_REASSERT_INTERVAL = 250
-local bhs_reassert_next     = 0
-
-local STAMINA_REVEAL_BELOW  = 0.9
-local STAMINA_REFILLED_AT   = 0.99  -- avoids flickering
-local is_stamina_showing    = false
-local stamina_reveal_armed  = false -- only reveal on a real drain, not when already-drained at load
-
-local DAMAGE_PSY_DROP       = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
-local RECOVERED_AT          = 0.999 -- health/psy at/above this = "fully recovered"
-
-local STAMINA_STATIC_NAMES  = {}
+local STAMINA_STATIC_NAMES = {}
 for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
     for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
         STAMINA_STATIC_NAMES[#STAMINA_STATIC_NAMES + 1] = base .. suf
@@ -157,6 +218,7 @@ local function set_stamina_visible(visible)
 end
 
 local apply_hud_visibility_logic -- forward declaration (defined below)
+local pin_hud_from_hotkey        -- forward declaration (defined below)
 
 local function apply_bhs_visibility()
     local bhs_on = bhs_should_display()
@@ -170,19 +232,24 @@ local function apply_bhs_visibility()
 end
 
 local function actor_is_hurt()
-    return db.actor.health < RECOVERED_AT or get_actor_psy_health() < RECOVERED_AT
+    return db.actor.health < DAMAGE_PSY_RECOVERED_AT or get_actor_psy_health() < DAMAGE_PSY_RECOVERED_AT
 end
 
 local function trigger_bhs_damage_reveal()
     local was_inactive = (bhs_reveal_on_damage_timer == 0)
     bhs_reveal_on_damage_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
-    if settings_cache.reveal_bhs_keep_while_hurt then bhs_keep_while_hurt = true end
+    if settings_cache.reveal_bhs_keep_while_hurt then is_hud_showing_due_to_actor_damage = true end
     if was_inactive then apply_hud_visibility_logic() end
 end
 
 local bhs_update_hooked = false
 
--- Re-hide BHS the same tick it rebuilt, before the frame renders.
+-- Re-hide BHS the same tick it rebuilt, before the frame renders. Runs every frame
+-- via the BHS update hook and re-hides unconditionally: BHS rebuilds its statics
+-- incrementally on save load, and parts can be shown before bhs_looks_visible()'s
+-- probed bases are -- so gating this on that probe lets BHS flash on load. The probe
+-- is a sufficient, not necessary, signal, so it must not gate the authoritative
+-- re-hide.
 local function reassert_bhs_hidden()
     if not bhs_should_display() then apply_bhs_visibility() end
 end
@@ -195,7 +262,10 @@ end
 local function install_bhs_update_hook()
     if bhs_update_hooked then return end
     if not (zzz_player_injuries and zzz_player_injuries.actor_on_update) then return end
-    if zzz_player_injuries.__era_ihud_wrapped then bhs_update_hooked = true return end
+    if zzz_player_injuries.__era_ihud_wrapped then
+        bhs_update_hooked = true
+        return
+    end
 
     local original = zzz_player_injuries.actor_on_update
     local wrapped = function(...)
@@ -210,7 +280,7 @@ local function install_bhs_update_hook()
     RegisterScriptCallback("actor_on_update", wrapped)
     zzz_player_injuries.actor_on_update    = wrapped -- route DART onPostRefresh through wrapper too
     zzz_player_injuries.__era_ihud_wrapped = true
-    bhs_update_hooked = true
+    bhs_update_hooked                      = true
 end
 
 local function update_stamina_reveal()
@@ -237,7 +307,9 @@ local function update_stamina_reveal()
 end
 
 
----------------------------------------------------------------------------------------------
+-- ===========================================================================
+-- 5. Other HUD element setters  (ammo, PDA messages/notify, status, minimap, companion)
+-- ===========================================================================
 
 local AMMO_ELEMENTS = { "m_ui_weapon_icon", "m_ui_weapon_cur_ammo", "m_fire_mode" }
 
@@ -329,8 +401,6 @@ local function set_status_visible(visible)
     end
 end
 
----------------------------------------------------------------------------------------------
-
 local function set_minimap_visible(visible)
     local mg = ActorMenu.get_maingame()
     if not mg or not mg.UIZoneMap then return end
@@ -348,10 +418,52 @@ local function set_companion_visible(visible)
     hud:Show(visible and true or false)
 end
 
+-- ===========================================================================
+-- 6. Lock overlay  (our own padlock-icon UI for when the HUD is locked in place and won't disappear automatically.)
+-- ===========================================================================
+
+local LOCK_XML = "era_immersive_hud.xml"
+
+class "UIEraIHudLock" (CUIScriptWnd)
+function UIEraIHudLock:__init()
+    super()
+    local xml = CScriptXmlInit()
+    xml:ParseFile(LOCK_XML)
+    -- era_lock draws the padlock texture (ui_era_ihud_lock) straight from the xml;
+    -- nothing to set at runtime (no text control on a texture-only static).
+    self.label = xml:InitStatic("era_lock", self)
+end
+
+function UIEraIHudLock:__finalize() end
+
+local lock_dialog = nil -- the live overlay (nil while hidden); reset per session in on_game_start
+
+local function set_lock_indicator_visible(visible)
+    local hud = get_hud()
+    if not hud then return end
+
+    if visible then
+        if not lock_dialog then
+            lock_dialog = UIEraIHudLock()
+            hud:AddDialogToRender(lock_dialog)
+        end
+    elseif lock_dialog then
+        hud:RemoveDialogToRender(lock_dialog)
+        lock_dialog = nil
+    end
+end
+
+-- ===========================================================================
+-- 7. Central dispatch
+-- ===========================================================================
+
 function apply_hud_visibility_logic()
     if not (db and db.actor) then return end
 
+    set_lock_indicator_visible(is_hud_pinned and settings_cache.show_lock_indicator)
+
     apply_bhs_visibility()
+
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
     set_status_visible(damage_reveal_active() or should_display_for_setting_key(KEYS.mode_statuses, true))
@@ -360,7 +472,9 @@ function apply_hud_visibility_logic()
     set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
 end
 
----------------------------------------------------------------------------------------------
+-- ===========================================================================
+-- 8. Input & reveal triggers  (keys, per-frame update, inventory/damage/stamina)
+-- ===========================================================================
 
 local function actor_menu_on_mode_changed_callback(mode, last_mode)
     if mode == 1 then
@@ -382,6 +496,14 @@ local function actor_on_update_callback()
         apply_hud_visibility_logic()
     end
 
+    if settings_cache.pin_enabled and key_down_time ~= 0 and not long_press_fired then
+        local threshold = (settings_cache.long_press_duration or 0.5) * 1000
+        if time_global() - key_down_time >= threshold then
+            long_press_fired = true
+            pin_hud_from_hotkey()
+        end
+    end
+
     update_stamina_reveal()
 
     -- BHS (or another mod such as DART) can rebuild and re-show its statics after we
@@ -401,6 +523,7 @@ local function actor_on_update_callback()
     if full_hud_timer > 0 and time_global() >= full_hud_timer then
         full_hud_timer = 0
         is_hud_showing = false
+        is_hud_pinned  = false
         apply_hud_visibility_logic()
     end
 
@@ -426,37 +549,37 @@ local function actor_on_update_callback()
         apply_hud_visibility_logic()
     end
 
-    if bhs_keep_while_hurt and (not settings_cache.reveal_bhs_on_damage
+    if is_hud_showing_due_to_actor_damage and (not settings_cache.reveal_bhs_on_damage
             or not settings_cache.reveal_bhs_keep_while_hurt
             or not actor_is_hurt()) then
-        bhs_keep_while_hurt = false
+        is_hud_showing_due_to_actor_damage = false
         apply_hud_visibility_logic()
     end
 end
 
-local function on_key_press_callback(dik)
-    if not (db and db.actor) then return end
-    if level.main_input_receiver and level.main_input_receiver() then return end
-    if not settings_cache.toggle_key or settings_cache.toggle_key == 0 then return end
-    if dik ~= settings_cache.toggle_key then return end
+-- Resolve the toggle key + optional modifier. Checked when the key goes down.
+local function toggle_key_event_valid(dik)
+    if not (db and db.actor) then return false end
+    if level.main_input_receiver and level.main_input_receiver() then return false end
+    if not settings_cache.toggle_key or settings_cache.toggle_key == 0 then return false end
+    if dik ~= settings_cache.toggle_key then return false end
 
-    local function toggle_modifier_held(mod_id)
-        -- 0=none 1=shift 2=ctrl 3=alt
-        if not mod_id or mod_id == 0 then return true end
-
-        if ui_mcm and ui_mcm.get_mod_key then
-            return ui_mcm.get_mod_key(mod_id) and true or false
-        end
-
-        return true
+    local mod_id = settings_cache.toggle_modifier -- 0=none 1=shift 2=ctrl 3=alt
+    if mod_id and mod_id ~= 0 and ui_mcm and ui_mcm.get_mod_key then
+        if not ui_mcm.get_mod_key(mod_id) then return false end
     end
 
-    if not toggle_modifier_held(settings_cache.toggle_modifier) then return end
+    return true
+end
 
-    if not is_hud_showing and (bhs_reveal_on_damage_timer > 0 or bhs_keep_while_hurt) then
-        full_hud_timer             = 0
-        bhs_reveal_on_damage_timer = 0
-        bhs_keep_while_hurt        = false
+-- A quick tap: flip the HUD (or cancel an active damage reveal), honoring auto-hide.
+local function toggle_hud_from_hotkey()
+    is_hud_pinned = false -- a tap is never a pin; tapping while pinned unpins (hides) it
+
+    if not is_hud_showing and (bhs_reveal_on_damage_timer > 0 or is_hud_showing_due_to_actor_damage) then
+        full_hud_timer                     = 0
+        bhs_reveal_on_damage_timer         = 0
+        is_hud_showing_due_to_actor_damage = false
         apply_hud_visibility_logic()
         return
     end
@@ -468,13 +591,52 @@ local function on_key_press_callback(dik)
             and (time_global() + (settings_cache.reveal_duration or 5) * 1000)
             or 0
     else
-        full_hud_timer             = 0
-        bhs_reveal_on_damage_timer = 0
-        bhs_keep_while_hurt        = false
+        full_hud_timer                     = 0
+        bhs_reveal_on_damage_timer         = 0
+        is_hud_showing_due_to_actor_damage = false
     end
 
     apply_hud_visibility_logic()
 end
+
+-- A long press: pin the HUD on, ignoring the auto-hide timer, so it stays visible
+-- until the player taps the hotkey again to hide it. Fired from the per-frame check
+-- in actor_on_update_callback the moment the hold passes long_press_duration.
+pin_hud_from_hotkey = function()
+    is_hud_showing = true
+    is_hud_pinned  = true
+    full_hud_timer = 0 -- no auto-hide while pinned
+    apply_hud_visibility_logic()
+end
+
+local function on_key_press_callback(dik)
+    if not toggle_key_event_valid(dik) then return end
+
+    if key_down_time == 0 then
+        key_down_time    = time_global()
+        long_press_fired = false
+    end
+end
+
+local function on_key_release_callback(dik)
+    if key_down_time == 0 then return end
+    if dik ~= settings_cache.toggle_key then return end
+
+    local pinned     = long_press_fired
+    key_down_time    = 0
+    long_press_fired = false
+
+    if pinned then return end
+
+    if not (db and db.actor) then return end
+    if level.main_input_receiver and level.main_input_receiver() then return end
+
+    toggle_hud_from_hotkey()
+end
+
+-- ===========================================================================
+-- 9. Lifecycle & callback registration
+-- ===========================================================================
 
 local function on_option_change_callback()
     reload_settings_cache()
@@ -486,6 +648,13 @@ local function on_news_received_callback()
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
 end
 
+local function rebuild_lock_overlay()
+    local hud = get_hud()
+    if hud and lock_dialog then hud:RemoveDialogToRender(lock_dialog) end
+    lock_dialog = nil
+    apply_hud_visibility_logic()
+end
+
 local function actor_on_first_update_callback()
     -- Install here (not on_game_start): our on_game_start runs before BHS's, so
     -- BHS hasn't registered its actor_on_update yet at that point.
@@ -494,29 +663,35 @@ end
 
 function on_game_start()
     reload_settings_cache()
-    has_applied_initial_settings = false
+    has_applied_initial_settings       = false
 
-    is_hud_showing               = false
-    is_inventory_open            = false
-    is_stamina_showing           = false
-    stamina_reveal_armed         = false
-    bhs_keep_while_hurt          = false
-
-    bhs_reveal_on_damage_timer   = 0
-    full_hud_timer               = 0
-    last_actor_health            = nil
-    last_actor_psy_health        = nil
-    bhs_reassert_next            = 0
-    bhs_update_hooked            = false
+    is_hud_showing                     = false
+    is_inventory_open                  = false
+    is_stamina_showing                 = false
+    stamina_reveal_armed               = false
+    is_hud_showing_due_to_actor_damage = false
+    key_down_time                      = 0
+    long_press_fired                   = false
+    is_hud_pinned                      = false
+    lock_dialog                        = nil
+    bhs_reveal_on_damage_timer         = 0
+    full_hud_timer                     = 0
+    last_actor_health                  = nil
+    last_actor_psy_health              = nil
+    bhs_reassert_next                  = 0
+    bhs_update_hooked                  = false
+    bhs_active_suffix                  = nil
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
+    RegisterScriptCallback("on_key_release", on_key_release_callback)
     RegisterScriptCallback("on_option_change", on_option_change_callback)
     RegisterScriptCallback("actor_on_update", actor_on_update_callback)
     RegisterScriptCallback("actor_on_first_update", actor_on_first_update_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
     RegisterScriptCallback("on_news_received", on_news_received_callback)
+    RegisterScriptCallback("on_screen_resolution_changed", rebuild_lock_overlay)
 
     if dart_module then
-        RegisterScriptCallback("on_dart_post_refresh", apply_hud_visibility_logic)
+        RegisterScriptCallback("on_dart_post_refresh", rebuild_lock_overlay)
     end
 end
