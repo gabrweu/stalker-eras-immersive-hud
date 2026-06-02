@@ -3,8 +3,6 @@ Disable HUD elements with granularity or use a hotkey to toggle them at any time
 
 Idea is to allow for hud customization without overwriting GAMMA files nor using hud_draw nor affecting other mods. As a bonus, making it work for any mod without need for intrinsic support (this is very experimental; needs more testing before including again).
 
-This is specifically done for GAMMA.
-
 Mod contains a single, non-overwriting script file that can toggle or hide:
 - minimap
 - health/BHS hud
@@ -17,7 +15,7 @@ Mod contains a single, non-overwriting script file that can toggle or hide:
 Additionally, there are settings to:
 - hide the HUD after X amount of seconds after a toggle.
 - show health data and statuses when opening the inventory.
-- show health data and statuses when taking damage.
+- show health data and statuses when taking damage (or psy damage).
 - show just the stamina bar when running regardless of the HUD state.
 
 
@@ -36,7 +34,7 @@ The main Anomaly/GAMMA settings menu still has priority over the UI. As such, if
 
 Behavior might be wonky with other mods that affect the HUD; let me know if you run into anything specific.
 
-Claude Opus 4.7 was used to bounce ideas off of and help with syntax as I had never touched LUA before.
+Claude Opus 4.8 was used to assist the making and maintaining of the mod.
 
 Repository: https://github.com/gabrweu/stalker-eras-immersive-hud
 
