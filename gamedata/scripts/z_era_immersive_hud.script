@@ -31,6 +31,8 @@ local DAMAGE_PSY_RECOVERED_AT            = 0.999 -- health/psy at/above this = "
 local STAMINA_REVEAL_BELOW               = 0.9
 local STAMINA_REFILLED_AT                = 0.99
 
+local RADIATION_REVEAL_ABOVE             = 0 -- db.actor.radiation above this counts as "irradiated"
+
 -- ===========================================================================
 -- 2. Reveal state  (module-level mutable state -- all reset in on_game_start)
 -- ===========================================================================
@@ -44,15 +46,18 @@ local key_down_time                      = 0     -- time_global() when the toggl
 local long_press_fired                   = false -- the hold-to-pin already triggered for the current press.
 local bhs_reveal_on_damage_timer         = 0     -- time_global() deadline for the on-damage BHS flash (0 = inactive).
 local full_hud_timer                     = 0     -- time_global() deadline for the auto-hide-after-showing timer (0 = inactive).
+local ammo_fired_timer                   = 0     -- time_global() deadline for the post-fire ammo reveal (0 = inactive).
 
 local is_hud_showing_due_to_actor_damage = false -- sticky on-damage reveal (kept while the actor is hurt).
 local last_actor_health                  = nil   -- previous frame's actor health, for detecting real damage (a health drop)
 local last_actor_psy_health              = nil   -- previous frame's psy health, for detecting psy damage (a drop)
 
--- TODO: this behavior might not make sense. I.e. if the stamina is already drained when loading we might want to show it?
-local stamina_reveal_armed               = false -- only reveal on a real drain, not when already-drained at load
 
-local bhs_reassert_next                  = 0
+local status_reveal_timer = 0                  -- time_global() deadline for the new-status-effect reveal (0 = inactive)
+local last_status_set     = nil                -- previous active-indicator name set; nil = baseline not taken yet
+local status_check_next   = 0                  -- throttle for the new-status scan
+
+local bhs_reassert_next   = 0
 
 -- ===========================================================================
 -- 3. Settings helpers
@@ -73,13 +78,13 @@ local function reload_settings_cache()
     end
 end
 
-local function should_display_for_setting_key(element, reveals_on_inventory)
+local function should_display_for_setting_key(element, inventory_reveal_key)
     local mode = settings_cache[element]
     if mode == MODE.SHOW then return true end
     if mode == MODE.HIDE then return false end
 
     if is_hud_showing then return true end
-    if reveals_on_inventory and is_inventory_open and settings_cache.reveal_during_inventory then return true end
+    if inventory_reveal_key and is_inventory_open and settings_cache[inventory_reveal_key] then return true end
 
     return false
 end
@@ -126,7 +131,7 @@ end
 
 local function bhs_should_display()
     if damage_reveal_active() then return true end
-    return should_display_for_setting_key(KEYS.mode_bhs, true) -- reveals while inventory is open (if setting is enabled)
+    return should_display_for_setting_key(KEYS.mode_bhs, KEYS.reveal_during_inventory) -- reveals while inventory is open (if setting is enabled)
 end
 
 local function get_actor_psy_health()
@@ -292,11 +297,12 @@ local function update_stamina_reveal()
         return
     end
 
+    -- Reveal whenever stamina drops below the threshold (incl. already-low at load /
+    -- zone change); is_stamina_showing provides the hysteresis so it stays shown until
+    -- stamina refills to STAMINA_REFILLED_AT.
     local power = db.actor.power
-    if power >= STAMINA_REFILLED_AT then stamina_reveal_armed = true end
-
     if not is_stamina_showing then
-        if stamina_reveal_armed and power < STAMINA_REVEAL_BELOW then
+        if power < STAMINA_REVEAL_BELOW then
             is_stamina_showing = true
             set_stamina_visible(true)
         end
@@ -304,6 +310,123 @@ local function update_stamina_reveal()
         is_stamina_showing = false
         set_stamina_visible(false)
     end
+end
+
+-- The radiation infection bar above the stamina bar belongs to the Minimalist HUD
+-- ("SidHUD"): a script-drawn dialog (like our lock overlay / axr_companions.HUD), not a
+-- BHS custom static. Its only handle is the radhealthwindow static.
+local function set_radiation_visible(visible)
+    if not (ui_sidhud_mcm and ui_sidhud_mcm.HUD and ui_sidhud_mcm.HUD.radhealthwindow) then return end
+
+    local win = ui_sidhud_mcm.HUD.radhealthwindow
+    if win.Show then win:Show(visible and true or false) end
+end
+
+local function radiation_should_display()
+    -- Explicit HIDE guard: "Always hide" must beat the irradiated reveal below.
+    if settings_cache.mode_radiation == MODE.HIDE then return false end
+    if should_display_for_setting_key(KEYS.mode_radiation) then return true end -- SHOW, or KEY while hotkey-revealed
+
+    if settings_cache.reveal_radiation_on_present
+        and db.actor.radiation and db.actor.radiation > RADIATION_REVEAL_ABOVE then
+        return true
+    end
+
+    return false
+end
+
+-- The radiation status-effect icon (actor_status "Radiation" indicator) and the mSv text
+-- layered on it are driven by actor_status.get_radiation(true). install_radiation_icon_hook
+-- wraps that so the icon obeys radiation_should_display() too -- keeping the icon in sync with
+-- the bar (so "Always hide" hides both). actor_status's slots are positional, so there is no
+-- fixed slot to target; gating the functor is the clean lever.
+local function install_radiation_icon_hook()
+    if not (actor_status and actor_status.get_radiation) then return end
+    if actor_status.__era_ihud_rad_hooked then return end
+
+    local original = actor_status.get_radiation
+    actor_status.get_radiation = function(visual)
+        -- visual=true is the indicator/Msv path; 0 => not active => the slot is skipped.
+        -- Non-visual callers (game logic) pass through untouched.
+        if visual and not radiation_should_display() then return 0 end
+        return original(visual)
+    end
+
+    actor_status.__era_ihud_rad_hooked = true
+end
+
+local last_radiation_visible = nil -- last applied radiation visibility; nil forces a refresh
+
+-- The bar is re-asserted every frame (not transition-based): SidHUD's UISidHud:Refresh()
+-- re-shows it on every on_option_change and callback order is unspecified, so a one-shot hide
+-- can be silently undone. A single Show() per frame is cheap. The status icon updates on
+-- actor_status's own ~1s throttle, so on a visibility flip we force one refresh for parity.
+local function update_radiation_reveal()
+    local want = radiation_should_display()
+    set_radiation_visible(want)
+
+    if want ~= last_radiation_visible then
+        last_radiation_visible = want
+        if actor_status and actor_status.HUD and actor_status.HUD.Update then
+            actor_status.HUD:Update(true) -- re-evaluate the radiation indicator now, not in ~1s
+        end
+    end
+end
+
+-- Reveal the status-effect bar briefly when a new status-effect icon appears.
+-- actor_status builds a global `indicators` table (states + boosters, incl. ones added
+-- by other mods); we replicate its pass logic to know which icons are currently active,
+-- then fire the reveal when a name shows up that wasn't active last scan.
+local STATUS_CHECK_INTERVAL = 1000
+
+local function status_reveal_active()
+    return status_reveal_timer > 0
+end
+
+local function compute_active_statuses()
+    local set = {}
+    if not (actor_status and actor_status.indicators) then return set end
+
+    for name, t in pairs(actor_status.indicators) do
+        if t.functor then
+            local ok, value = pcall(execute_func, unpack(t.functor))
+            if ok and value then
+                -- Same test actor_status uses in UIIndicators:Update.
+                if (t.typ == "state" and value >= 1 and value <= 4)
+                    or (t.typ == "booster") then
+                    set[name] = true
+                end
+            end
+        end
+    end
+
+    return set
+end
+
+local function update_status_reveal()
+    if not settings_cache.reveal_statuses_on_new then
+        last_status_set = nil -- so re-enabling re-baselines instead of flashing for already-active effects
+        return
+    end
+
+    local now = time_global()
+    if now < status_check_next then return end
+    status_check_next = now + STATUS_CHECK_INTERVAL
+
+    local current = compute_active_statuses()
+    -- First scan after load (or after the setting was off) only baselines -- don't reveal
+    -- for effects already active, same idea as the last_actor_health nil-guard.
+    if last_status_set then
+        for name in pairs(current) do
+            if not last_status_set[name] then
+                local was_inactive = (status_reveal_timer == 0)
+                status_reveal_timer = now + (settings_cache.reveal_duration or 5) * 1000
+                if was_inactive then apply_hud_visibility_logic() end
+                break
+            end
+        end
+    end
+    last_status_set = current
 end
 
 
@@ -329,6 +452,34 @@ local function set_ammo_visible(visible)
             end
         end
     end
+end
+
+-- Resolve ammo/weapon-cluster visibility, mirroring radiation_should_display():
+-- "Always hide" wins, then SHOW / hotkey-KEY, then the opt-in reveal sources (OR'd).
+-- Only meaningful in KEY mode; SHOW already returned true above.
+local function ammo_should_display()
+    if settings_cache.mode_ammo == MODE.HIDE then return false end         -- Always hide beats the reveals below
+    if should_display_for_setting_key(KEYS.mode_ammo) then return true end -- SHOW, or KEY while hotkey-revealed
+
+    if settings_cache.reveal_ammo_on_fire and ammo_fired_timer > 0 then return true end
+
+    local item = db.actor:active_item()
+    if item and IsWeapon(item) then
+        if settings_cache.reveal_ammo_weapon_out then return true end
+        if settings_cache.reveal_ammo_mag_not_full then
+            -- Base mag size from the weapon section. With extended-mag mods the loaded
+            -- count can exceed this, so "not full" only triggers once below the base.
+            local cap = SYS_GetParam(2, item:section(), "ammo_mag_size")
+            if cap and cap > 0 and item:get_ammo_in_magazine() < cap then return true end
+        end
+    end
+    return false
+end
+
+-- Per-frame driver: the mag-fill / weapon-out conditions change continuously, so
+-- (like radiation) we re-resolve every frame. set_ammo_visible is idempotent.
+local function update_ammo_reveal()
+    set_ammo_visible(ammo_should_display())
 end
 
 local function set_pda_messages_visible(visible)
@@ -465,9 +616,12 @@ function apply_hud_visibility_logic()
     apply_bhs_visibility()
 
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
-    set_ammo_visible(should_display_for_setting_key(KEYS.mode_ammo))
-    set_status_visible(damage_reveal_active() or should_display_for_setting_key(KEYS.mode_statuses, true))
-    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
+    set_ammo_visible(ammo_should_display())
+    set_radiation_visible(radiation_should_display())
+    set_status_visible(status_reveal_active() or damage_reveal_active()
+        or should_display_for_setting_key(KEYS.mode_statuses, KEYS.reveal_during_inventory))
+    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages,
+        KEYS.reveal_pda_messages_during_inventory))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
     set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
 end
@@ -505,6 +659,9 @@ local function actor_on_update_callback()
     end
 
     update_stamina_reveal()
+    update_radiation_reveal()
+    update_ammo_reveal()
+    update_status_reveal()
 
     -- BHS (or another mod such as DART) can rebuild and re-show its statics after we
     -- hid them. While BHS should be hidden, re-assert the hide if it has reappeared.
@@ -547,6 +704,16 @@ local function actor_on_update_callback()
     if bhs_reveal_on_damage_timer > 0 and time_global() >= bhs_reveal_on_damage_timer then
         bhs_reveal_on_damage_timer = 0
         apply_hud_visibility_logic()
+    end
+
+    if status_reveal_timer > 0 and time_global() >= status_reveal_timer then
+        status_reveal_timer = 0
+        apply_hud_visibility_logic()
+    end
+
+    -- No apply needed: update_ammo_reveal() above re-hides on the next frame.
+    if ammo_fired_timer > 0 and time_global() >= ammo_fired_timer then
+        ammo_fired_timer = 0
     end
 
     if is_hud_showing_due_to_actor_damage and (not settings_cache.reveal_bhs_on_damage
@@ -645,7 +812,16 @@ end
 
 local function on_news_received_callback()
     if not (db and db.actor) then return end
-    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages))
+    set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages,
+        KEYS.reveal_pda_messages_during_inventory))
+end
+
+-- Arm the post-fire ammo reveal; update_ammo_reveal() shows it next frame and the
+-- timer-expiry check clears it. Reuses the shared reveal_duration, like the others.
+local function actor_on_weapon_fired_callback()
+    if settings_cache.reveal_ammo_on_fire then
+        ammo_fired_timer = time_global() + (settings_cache.reveal_duration or 5) * 1000
+    end
 end
 
 local function rebuild_lock_overlay()
@@ -659,28 +835,34 @@ local function actor_on_first_update_callback()
     -- Install here (not on_game_start): our on_game_start runs before BHS's, so
     -- BHS hasn't registered its actor_on_update yet at that point.
     install_bhs_update_hook()
+    install_radiation_icon_hook()
 end
 
 function on_game_start()
     reload_settings_cache()
     has_applied_initial_settings       = false
 
+    -- TODO: this is getting out of hand lol
     is_hud_showing                     = false
     is_inventory_open                  = false
     is_stamina_showing                 = false
-    stamina_reveal_armed               = false
     is_hud_showing_due_to_actor_damage = false
     key_down_time                      = 0
     long_press_fired                   = false
     is_hud_pinned                      = false
     lock_dialog                        = nil
     bhs_reveal_on_damage_timer         = 0
+    status_reveal_timer                = 0
+    last_status_set                    = nil
+    status_check_next                  = 0
     full_hud_timer                     = 0
+    ammo_fired_timer                   = 0
     last_actor_health                  = nil
     last_actor_psy_health              = nil
     bhs_reassert_next                  = 0
     bhs_update_hooked                  = false
     bhs_active_suffix                  = nil
+    last_radiation_visible             = nil
 
     RegisterScriptCallback("on_key_press", on_key_press_callback)
     RegisterScriptCallback("on_key_release", on_key_release_callback)
@@ -689,6 +871,7 @@ function on_game_start()
     RegisterScriptCallback("actor_on_first_update", actor_on_first_update_callback)
     RegisterScriptCallback("ActorMenu_on_mode_changed", actor_menu_on_mode_changed_callback)
     RegisterScriptCallback("on_news_received", on_news_received_callback)
+    RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired_callback)
     RegisterScriptCallback("on_screen_resolution_changed", rebuild_lock_overlay)
 
     if dart_module then

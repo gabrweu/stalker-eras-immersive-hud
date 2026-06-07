@@ -1,3 +1,10 @@
+-- Sections that get an intro/instruction blurb (a desc widget) under their divider.
+-- Groups absent here (hotkey, behavior) stay plain dividers.
+local GROUP_DESC = {
+    reveals = "ui_mcm_era_ihud_sect_reveals",
+    modes   = "ui_mcm_era_ihud_sect_modes",
+}
+
 local function build_widget(entry)
     local w = { id = entry.key, def = entry.def }
     for k, v in pairs(entry.mcm) do w[k] = v end
@@ -12,11 +19,21 @@ function on_mcm_load()
         { id = "help",  type = "desc",  clr = { 200, 200, 255, 200 },      text = "ui_mcm_era_ihud_help" },
     }
 
-    local line_added = false
+    -- On each functional-group change, insert a divider (never before the first entry --
+    -- the help desc already separates it from the title), then an intro desc for groups
+    -- that have one. ids stay unique as MCM requires (line1.., sect_<group>).
+    local prev_group, line_n = nil, 0
     for _, entry in ipairs(z_era_immersive_hud_config.SETTINGS) do
-        if not line_added and entry.key:sub(1, 5) == "mode_" then
-            gr[#gr + 1] = { id = "line1", type = "line" }
-            line_added = true
+        if entry.group ~= prev_group then
+            if prev_group ~= nil then
+                line_n = line_n + 1
+                gr[#gr + 1] = { id = "line" .. line_n, type = "line" }
+            end
+            local desc_id = GROUP_DESC[entry.group]
+            if desc_id then
+                gr[#gr + 1] = { id = "sect_" .. entry.group, type = "desc", clr = { 200, 200, 255, 200 }, text = desc_id }
+            end
+            prev_group = entry.group
         end
         gr[#gr + 1] = build_widget(entry)
     end

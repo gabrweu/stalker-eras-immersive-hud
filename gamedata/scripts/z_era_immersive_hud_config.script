@@ -11,6 +11,7 @@ local function mode_row(key, hint, def)
     return {
         key = key,
         def = def,
+        group = "modes",
         mcm = { type = "radio_h", val = 2, hint = hint, content = MODE_CONTENT },
     }
 end
@@ -19,12 +20,14 @@ SETTINGS = {
     {
         key = "toggle_key",
         def = 0,
+        group = "hotkey",
         mcm = { type = "key_bind", val = 2, hint = "era_ihud_toggle_key" }
     },
 
     {
         key = "toggle_modifier",
         def = 0,
+        group = "hotkey",
         mcm = {
             type = "kb_mod_radio",
             val = 2,
@@ -37,18 +40,25 @@ SETTINGS = {
             },
         },
     },
-    { key = "auto_hide_enabled",       def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_auto_hide" } },
-    { key = "reveal_duration",         def = 5,     mcm = { type = "track", val = 2, min = 1, max = 30, step = 1, hint = "era_ihud_reveal_duration" } },
-    { key = "pin_enabled",             def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_pin_enabled" } },
-    { key = "long_press_duration",     def = 0.5,   mcm = { type = "track", val = 2, min = 0.2, max = 3.0, step = 0.1, hint = "era_ihud_long_press" } },
-    { key = "show_lock_indicator",     def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_show_lock" } },
-    { key = "reveal_during_inventory", def = false, mcm = { type = "check", val = 1, hint = "era_ihud_reveal_inventory" } },
-    { key = "reveal_bhs_on_damage",        def = false, mcm = { type = "check", val = 1, hint = "era_ihud_bhs_on_damage" } },
-    { key = "reveal_bhs_keep_while_hurt",  def = false, mcm = { type = "check", val = 1, hint = "era_ihud_bhs_keep_while_hurt" } },
-    { key = "reveal_stamina_on_drain",     def = true,  mcm = { type = "check", val = 1, hint = "era_ihud_stamina_on_drain" } },
+    { key = "auto_hide_enabled",       def = true,  group = "behavior", mcm = { type = "check", val = 1, hint = "era_ihud_auto_hide" } },
+    { key = "reveal_duration",         def = 5,     group = "behavior", mcm = { type = "track", val = 2, min = 1, max = 30, step = 1, hint = "era_ihud_reveal_duration" } },
+    { key = "pin_enabled",             def = true,  group = "behavior", mcm = { type = "check", val = 1, hint = "era_ihud_pin_enabled" } },
+    { key = "long_press_duration",     def = 0.5,   group = "behavior", mcm = { type = "track", val = 2, min = 0.2, max = 3.0, step = 0.1, hint = "era_ihud_long_press" } },
+    { key = "show_lock_indicator",     def = true,  group = "behavior", mcm = { type = "check", val = 1, hint = "era_ihud_show_lock" } },
+    { key = "reveal_during_inventory", def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_reveal_inventory" } },
+    { key = "reveal_pda_messages_during_inventory", def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_pda_messages_in_inventory" } },
+    { key = "reveal_bhs_on_damage",        def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_bhs_on_damage" } },
+    { key = "reveal_bhs_keep_while_hurt",  def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_bhs_keep_while_hurt" } },
+    { key = "reveal_stamina_on_drain",     def = true,  group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_stamina_on_drain" } },
+    { key = "reveal_radiation_on_present",  def = true,  group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_radiation_on_present" } },
+    { key = "reveal_statuses_on_new",      def = true,  group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_statuses_on_new" } },
+    { key = "reveal_ammo_weapon_out",      def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_weapon_out" } },
+    { key = "reveal_ammo_mag_not_full",    def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_mag_not_full" } },
+    { key = "reveal_ammo_on_fire",         def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_on_fire" } },
     mode_row("mode_minimap", "era_ihud_minimap"),
     mode_row("mode_bhs", "era_ihud_bhs"),
     mode_row("mode_ammo", "era_ihud_ammo"),
+    mode_row("mode_radiation", "era_ihud_radiation"),
     mode_row("mode_statuses", "era_ihud_statuses"),
     mode_row("mode_pda_messages", "era_ihud_pda_messages"),
     mode_row("mode_pda_notification", "era_ihud_pda_notification"),
