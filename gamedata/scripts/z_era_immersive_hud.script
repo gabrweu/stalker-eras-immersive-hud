@@ -202,28 +202,57 @@ local function bhs_looks_visible()
     return false
 end
 
-local STAMINA_STATIC_NAMES = {}
-for _, base in ipairs({ "bhs_stamina_bar", "bhs_stamina_bar_bg" }) do
-    for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
-        STAMINA_STATIC_NAMES[#STAMINA_STATIC_NAMES + 1] = base .. suf
+-- True only in BHS's highest-info picture mode: the body_health_system panel static is added
+-- only when show_hud_type == 2 (mode 1 shows bars without it). Used to gate the radiation
+-- trefoil icon so it appears only with the full panel. Cheap: the active suffix is locked.
+local function bhs_full_panel_shown()
+    local hud = get_hud()
+    if not hud or not hud.GetCustomStatic then return false end
+
+    local suffixes = bhs_active_suffix and { bhs_active_suffix } or BHS_RATIO_SUFFIXES
+    for _, suf in ipairs(suffixes) do
+        local st = hud:GetCustomStatic("body_health_system" .. suf)
+        if st then
+            local wnd = st:wnd()
+            if wnd and wnd.IsShown and wnd:IsShown() then return true end
+        end
     end
+
+    return false
 end
 
-local function set_stamina_visible(visible)
+-- Split so the background slot can be hidden independently of the fill (the "simplify
+-- auto-revealed bars" toggle). set_stamina_visible is only ever called for the standalone
+-- drain-reveal (always automatic), so the toggle can gate the bg here unconditionally.
+local STAMINA_FILL_NAMES = {}
+local STAMINA_BG_NAMES   = {}
+for _, suf in ipairs(BHS_RATIO_SUFFIXES) do
+    STAMINA_FILL_NAMES[#STAMINA_FILL_NAMES + 1] = "bhs_stamina_bar" .. suf
+    STAMINA_BG_NAMES[#STAMINA_BG_NAMES + 1]     = "bhs_stamina_bar_bg" .. suf
+end
+
+local function show_statics(names, show)
     local hud = get_hud()
     if not hud or not hud.GetCustomStatic then return end
 
-    for _, name in ipairs(STAMINA_STATIC_NAMES) do
+    for _, name in ipairs(names) do
         local st = hud:GetCustomStatic(name)
         if st then
             local wnd = st:wnd()
-            if wnd then wnd:Show(visible and true or false) end
+            if wnd then wnd:Show(show and true or false) end
         end
     end
 end
 
+local function set_stamina_visible(visible)
+    local on = visible and true or false
+    show_statics(STAMINA_FILL_NAMES, on)
+    show_statics(STAMINA_BG_NAMES, on and not settings_cache.minimal_auto_reveal)
+end
+
 local apply_hud_visibility_logic -- forward declaration (defined below)
 local pin_hud_from_hotkey        -- forward declaration (defined below)
+local apply_radiation            -- forward declaration (defined in the overlay section below)
 
 local function apply_bhs_visibility()
     local bhs_on = bhs_should_display()
@@ -357,14 +386,13 @@ end
 
 local last_radiation_visible = nil -- last applied radiation visibility; nil forces a refresh
 
--- The bar is re-asserted every frame (not transition-based): SidHUD's UISidHud:Refresh()
--- re-shows it on every on_option_change and callback order is unspecified, so a one-shot hide
--- can be silently undone. A single Show() per frame is cheap. The status icon updates on
--- actor_status's own ~1s throttle, so on a visibility flip we force one refresh for parity.
+-- Per frame: apply_radiation() draws our own bar (bg slot + fill) and keeps SidHUD's hidden,
+-- so the fill tracks db.actor.radiation. The status-effect icon updates on actor_status's own
+-- ~1s throttle, so on a visibility flip we force one refresh for parity with the bar.
 local function update_radiation_reveal()
-    local want = radiation_should_display()
-    set_radiation_visible(want)
+    apply_radiation()
 
+    local want = radiation_should_display()
     if want ~= last_radiation_visible then
         last_radiation_visible = want
         if actor_status and actor_status.HUD and actor_status.HUD.Update then
@@ -604,6 +632,70 @@ local function set_lock_indicator_visible(visible)
     end
 end
 
+-- The radiation bar (background slot + trefoil icon + progress fill) is drawn entirely by us
+-- from our own textures, instead of relying on SidHUD's fill + the Minimalist HUD's baked-in
+-- panel groove. This lets the whole bar -- background included -- follow mode_radiation. The
+-- slot/icon statics draw first and the fill progress bar on top (same window), so the z-order
+-- is guaranteed without coordinating with SidHUD's separate dialog. Slot and icon are separate
+-- statics so the icon can be toggled independently to follow BHS's display mode.
+class "UIEraIHudRadiation" (CUIScriptWnd)
+function UIEraIHudRadiation:__init()
+    super()
+    local xml = CScriptXmlInit()
+    xml:ParseFile(LOCK_XML) -- shares our private layout file
+    self.window = xml:InitStatic("era_rad_window", self)
+    self.slot   = xml:InitStatic("era_rad_window:era_rad_slot", self.window)
+    self.icon   = xml:InitStatic("era_rad_window:era_rad_icon", self.window)
+    self.fill   = xml:InitProgressBar("era_rad_window:era_rad_fill", self.window)
+    self.fill:Show(true)
+end
+
+function UIEraIHudRadiation:__finalize() end
+
+local rad_dialog = nil -- the live radiation-bar overlay; reset per session in on_game_start
+
+local function ensure_rad_dialog()
+    if rad_dialog then return end
+    local hud = get_hud()
+    if not hud then return end
+    -- Guard creation: a missing texture/layout must not break the per-frame HUD logic.
+    local ok, dlg = pcall(UIEraIHudRadiation)
+    if not (ok and dlg) then return end
+    rad_dialog = dlg
+    hud:AddDialogToRender(rad_dialog)
+end
+
+-- Defined into the forward-declared local so update_radiation_reveal (above) and
+-- apply_hud_visibility_logic (below) can both drive it.
+apply_radiation = function()
+    set_radiation_visible(false) -- we render our own bar; keep SidHUD's own bar hidden
+    ensure_rad_dialog()
+    if not rad_dialog then return end
+
+    local rad = (db.actor and db.actor.radiation) or 0
+    rad_dialog.fill:SetProgressPos(rad * 100) -- matches SidHUD's scale (value max = 35)
+
+    local want = radiation_should_display()
+    -- BHS's own H-key can fully hide its HUD (show_hud_type 0) even while our mod wants it
+    -- shown; in that "no info" mode the radiation bar disappears too (no bar -> simple bar ->
+    -- bar with icon, tracking BHS's mode). This is BHS's hide, detected as "we want BHS shown
+    -- but it isn't" -- distinct from OUR mod hiding BHS (bhs_should_display() false), which is
+    -- a standalone auto-reveal that keeps the bar.
+    if want and bhs_should_display() and not bhs_looks_visible() then
+        want = false
+    end
+
+    rad_dialog.window:Show(want)
+    -- "Simplify auto-revealed bars": when shown purely because we're irradiated (not via
+    -- Always-show or the hotkey), drop the background slot and leave just the fill.
+    local auto_only = want and not should_display_for_setting_key(KEYS.mode_radiation)
+    local show_slot = want and not (auto_only and settings_cache.minimal_auto_reveal)
+    rad_dialog.slot:Show(show_slot)
+    -- Trefoil icon follows BHS's mode: shown only when BHS's full body panel is up (highest
+    -- info mode), OR when BHS isn't on screen at all (a standalone auto-reveal keeps the icon).
+    rad_dialog.icon:Show(show_slot and (not bhs_should_display() or bhs_full_panel_shown()))
+end
+
 -- ===========================================================================
 -- 7. Central dispatch
 -- ===========================================================================
@@ -617,7 +709,7 @@ function apply_hud_visibility_logic()
 
     set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
     set_ammo_visible(ammo_should_display())
-    set_radiation_visible(radiation_should_display())
+    apply_radiation()
     set_status_visible(status_reveal_active() or damage_reveal_active()
         or should_display_for_setting_key(KEYS.mode_statuses, KEYS.reveal_during_inventory))
     set_pda_messages_visible(should_display_for_setting_key(KEYS.mode_pda_messages,
@@ -724,18 +816,33 @@ local function actor_on_update_callback()
     end
 end
 
+-- FDDA (Food/Drugs/Drinks Animations) plays item/harvest animations during which the
+-- engine filters input: anim_prepare() calls game.only_allow_movekeys(true), and the
+-- mutant-harvest path additionally calls level.disable_input(). While an animation is
+-- live, enhanced_animations.used_item / used_monster are non-nil. Probed defensively so
+-- we don't hard-depend on FDDA being installed.
+local function fdda_anim_active()
+    return enhanced_animations
+        and (enhanced_animations.used_item or enhanced_animations.used_monster)
+        and true or false
+end
+
+-- True if the configured toggle modifier (if any) is currently held.
+local function toggle_modifier_held()
+    local mod_id = settings_cache.toggle_modifier -- 0=none 1=shift 2=ctrl 3=alt
+    if mod_id and mod_id ~= 0 and ui_mcm and ui_mcm.get_mod_key then
+        return ui_mcm.get_mod_key(mod_id) and true or false
+    end
+    return true
+end
+
 -- Resolve the toggle key + optional modifier. Checked when the key goes down.
 local function toggle_key_event_valid(dik)
     if not (db and db.actor) then return false end
     if level.main_input_receiver and level.main_input_receiver() then return false end
     if not settings_cache.toggle_key or settings_cache.toggle_key == 0 then return false end
     if dik ~= settings_cache.toggle_key then return false end
-
-    local mod_id = settings_cache.toggle_modifier -- 0=none 1=shift 2=ctrl 3=alt
-    if mod_id and mod_id ~= 0 and ui_mcm and ui_mcm.get_mod_key then
-        if not ui_mcm.get_mod_key(mod_id) then return false end
-    end
-
+    if not toggle_modifier_held() then return false end
     return true
 end
 
@@ -786,16 +893,26 @@ local function on_key_press_callback(dik)
 end
 
 local function on_key_release_callback(dik)
-    if key_down_time == 0 then return end
     if dik ~= settings_cache.toggle_key then return end
+    if not (db and db.actor) then return end
+
+    -- During an FDDA animation (eat/drink/loot/harvest) the engine filters the key PRESS
+    -- (only_allow_movekeys / disable_input), so on_key_press never ran and key_down_time
+    -- is still 0 -- but the RELEASE event DOES fire. Honor that press-less release as a
+    -- tap so the hotkey still toggles mid-animation. No long-press pin is possible here:
+    -- with no press there was nothing to time.
+    if key_down_time == 0 then
+        if fdda_anim_active() and toggle_modifier_held() then
+            toggle_hud_from_hotkey()
+        end
+        return
+    end
 
     local pinned     = long_press_fired
     key_down_time    = 0
     long_press_fired = false
 
     if pinned then return end
-
-    if not (db and db.actor) then return end
     if level.main_input_receiver and level.main_input_receiver() then return end
 
     toggle_hud_from_hotkey()
@@ -824,10 +941,17 @@ local function actor_on_weapon_fired_callback()
     end
 end
 
+-- Drop our overlay dialogs (lock + radiation bar) and rebuild them against the current HUD.
+-- A plain re-apply would skip them: a non-nil stale ref looks "already shown", but it's bound
+-- to the old (rebuilt) HUD instance. Used on resolution change and DART HUD refresh.
 local function rebuild_lock_overlay()
     local hud = get_hud()
-    if hud and lock_dialog then hud:RemoveDialogToRender(lock_dialog) end
+    if hud then
+        if lock_dialog then hud:RemoveDialogToRender(lock_dialog) end
+        if rad_dialog then hud:RemoveDialogToRender(rad_dialog) end
+    end
     lock_dialog = nil
+    rad_dialog  = nil
     apply_hud_visibility_logic()
 end
 
@@ -851,6 +975,7 @@ function on_game_start()
     long_press_fired                   = false
     is_hud_pinned                      = false
     lock_dialog                        = nil
+    rad_dialog                         = nil
     bhs_reveal_on_damage_timer         = 0
     status_reveal_timer                = 0
     last_status_set                    = nil

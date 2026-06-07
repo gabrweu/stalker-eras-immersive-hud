@@ -55,6 +55,7 @@ SETTINGS = {
     { key = "reveal_ammo_weapon_out",      def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_weapon_out" } },
     { key = "reveal_ammo_mag_not_full",    def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_mag_not_full" } },
     { key = "reveal_ammo_on_fire",         def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_ammo_on_fire" } },
+    { key = "minimal_auto_reveal",         def = false, group = "reveals", mcm = { type = "check", val = 1, hint = "era_ihud_minimal_reveal" } },
     mode_row("mode_minimap", "era_ihud_minimap"),
     mode_row("mode_bhs", "era_ihud_bhs"),
     mode_row("mode_ammo", "era_ihud_ammo"),
