@@ -33,8 +33,6 @@
 	<string id="ui_mcm_era_ihud_stamina_on_drain_desc"><text>While the BHS panel is hidden, reveal just the stamina bar once you have spent about 10% of your stamina, and keep it shown until it refills. The BHS panel still shows its stamina bar as normal when it is revealed.</text></string>
 	<string id="ui_mcm_era_ihud_radiation_on_present"><text>Show radiation bar when irradiated</text></string>
 	<string id="ui_mcm_era_ihud_radiation_on_present_desc"><text>While the radiation bar is hidden, reveal it whenever you are irradiated, and keep it shown until your radiation returns to zero. Might not work well with different BHS texture mods.</text></string>
-	<string id="ui_mcm_era_ihud_minimal_reveal"><text>Simplify auto-revealed bars</text></string>
-	<string id="ui_mcm_era_ihud_minimal_reveal_desc"><text>When the stamina or radiation bar appears on its own (stamina dropping, or radiation present), show just the bar without its background slot. Bars shown via Always-show, the hotkey, or the full health panel keep their full background.</text></string>
 	<string id="ui_mcm_era_ihud_statuses_on_new"><text>Show status effects when a new one appears</text></string>
 	<string id="ui_mcm_era_ihud_statuses_on_new_desc"><text>When a new status-effect icon appears (radiation, bleeding, hunger, a food/med buff, etc.) briefly reveal the status-effect bar, then auto-hide it after the reveal duration.</text></string>
 	<string id="ui_mcm_era_ihud_ammo_weapon_out"><text>Show ammo when weapon is drawn</text></string>

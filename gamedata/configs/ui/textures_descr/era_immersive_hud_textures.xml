@@ -2,12 +2,6 @@
 	<file name="ui\era_immersive_hud_lock">
 		<texture id="ui_era_ihud_lock" x="0" y="0" width="64" height="64" />
 	</file>
-	<file name="ui\era_immersive_hud_rad_slot">
-		<texture id="ui_era_ihud_rad_slot" x="0" y="0" width="156" height="13" />
-	</file>
-	<file name="ui\era_immersive_hud_rad_icon">
-		<texture id="ui_era_ihud_rad_icon" x="0" y="0" width="156" height="13" />
-	</file>
 	<file name="ui\era_immersive_hud_rad_fill">
 		<texture id="ui_era_ihud_rad_fill" x="0" y="0" width="256" height="8" />
 	</file>

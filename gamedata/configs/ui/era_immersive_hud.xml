@@ -4,18 +4,11 @@
 		<texture r="210" g="210" b="210" a="160">ui_era_ihud_lock</texture>
 	</era_lock>
 
-	<!-- Radiation infection bar: separate background slot (era_rad_slot) + trefoil icon
-	     (era_rad_icon) statics with a progress fill (era_rad_fill) on top. Slot and icon are
-	     split so the icon can be toggled to follow BHS's display mode. Canvas coords mirror
-	     SidHUD's rad_health so it lands where the baked panel groove used to be (16:9;
-	     calibrate for other ratios). -->
+	<!-- Radiation infection bar: we draw ONLY the progress fill (era_rad_fill). The background
+	     groove (slot + trefoil) is the BHS/Minimalist HUD panel's own baked art -- we no longer
+	     override it, so BHS panel retextures show through. Canvas coords mirror SidHUD's
+	     rad_health so the fill lands inside the baked groove (16:9; calibrate for other ratios). -->
 	<era_rad_window x="5" y="734" width="83" height="10" stretch="1">
-		<era_rad_slot x="0" y="0" width="83" height="10" stretch="1">
-			<texture>ui_era_ihud_rad_slot</texture>
-		</era_rad_slot>
-		<era_rad_icon x="0" y="0" width="83" height="10" stretch="1">
-			<texture>ui_era_ihud_rad_icon</texture>
-		</era_rad_icon>
 		<era_rad_fill x="10" y="4" width="70" height="3" stretch="1" horz="1" min="0" max="35" pos="0">
 			<progress>
 				<texture>ui_era_ihud_rad_fill</texture>
