@@ -1,0 +1,35 @@
+-- Stray Companions + A Stalker's Best Friend (pet HP bar) support.
+local core = z_era_immersive_hud
+local KEYS = z_era_immersive_hud_config.KEYS
+
+local function want_display()
+    return core.should_display_for_setting_key(KEYS.mode_pet_hp)
+end
+
+local wrapped = false
+local function ensure_wrap()
+    if wrapped then return end
+    local cls = leer_personal_pet and leer_personal_pet.HUDPetHealth
+    if not (cls and cls.Update) then return end
+    if cls.__era_ihud_wrapped then
+        wrapped = true
+        return
+    end
+
+    local original = cls.Update
+    cls.Update = function(self)
+        original(self) -- unguarded, like the Toxic Air/compass/stealth hooks: never alter the mod's error behavior
+        if not want_display() then
+            if self.bg and self.bg.Show then pcall(function() self.bg:Show(false) end) end
+        end
+    end
+    cls.__era_ihud_wrapped = true
+    wrapped = true
+end
+
+if core and core.register_integration then
+    core.register_integration({ id = "pet_hp", apply = ensure_wrap, update = ensure_wrap })
+end
+
+-- No-op anchor: guarantees the engine loads this file (so the registration above runs).
+function on_game_start() end

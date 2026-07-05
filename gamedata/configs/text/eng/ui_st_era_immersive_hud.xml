@@ -62,4 +62,6 @@
 	<string id="ui_mcm_era_ihud_compass_desc"><text>The Tactical Compass mod's compass bar and its waypoint markers.</text></string>
 	<string id="ui_mcm_era_ihud_stealth"><text>Stealth indicator</text></string>
 	<string id="ui_mcm_era_ihud_stealth_desc"><text>The Stealth Overhaul mod's light-gem / detection indicator.</text></string>
+	<string id="ui_mcm_era_ihud_pet_hp"><text>Companion pet health bar</text></string>
+	<string id="ui_mcm_era_ihud_pet_hp_desc"><text>The pet's health bar HUD from A Stalker's Best Friend (with Stray Companions). Only appears while you have a pet companion.</text></string>
 </string_table>

@@ -66,6 +66,7 @@ SETTINGS = {
     mode_row("mode_toxic_air", "era_ihud_toxic_air"),
     mode_row("mode_compass", "era_ihud_compass"),
     mode_row("mode_stealth", "era_ihud_stealth"),
+    mode_row("mode_pet_hp", "era_ihud_pet_hp"),
 }
 
 KEYS = {}
