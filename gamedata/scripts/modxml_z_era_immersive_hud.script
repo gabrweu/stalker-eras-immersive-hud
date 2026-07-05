@@ -1,3 +1,4 @@
+-- Registering our custom textures for DART to automatically scale as needed.
 local function parse_era_ihud(XML)
 	local Utils    = dart_utils
 	local Module   = dart_module

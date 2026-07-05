@@ -1,0 +1,79 @@
+-- Drunk's Toxic Air support.
+local core = z_era_immersive_hud
+local KEYS = z_era_immersive_hud_config.KEYS
+
+local function want_display()
+    return core.should_display_for_setting_key(KEYS.mode_toxic_air)
+end
+
+local wrapped = false
+local ta_original_update = nil -- the real ToxicAir:Update we wrapped
+local ta_hud_tmr_uv = nil      -- upvalue index of TA's private hud_tmr on that function (nil if not found)
+
+local function ensure_wrap()
+    if wrapped then return end
+    if not (toxic_air and toxic_air.ToxicAir and toxic_air.ToxicAir.Update) then return end
+
+    if toxic_air.ToxicAir.__era_ihud_wrapped then
+        wrapped = true
+        return
+    end
+
+    local original = toxic_air.ToxicAir.Update
+    ta_original_update = original
+
+    -- Find the hud_tmr throttle upvalue by name (see force_ta_refresh).
+    if debug and debug.getupvalue then
+        local i = 1
+        while true do
+            local n = debug.getupvalue(original, i)
+            if not n then break end
+            if n == "hud_tmr" then
+                ta_hud_tmr_uv = i
+                break
+            end
+            i = i + 1
+        end
+    end
+
+    toxic_air.ToxicAir.Update = function(self)
+        original(self) -- unguarded, like the BHS hook: never alter TA's own error behavior
+        if not want_display() then
+            if self.bg and self.bg.Show then
+                pcall(function() self.bg:Show(false) end)
+            end
+        end
+    end
+    toxic_air.ToxicAir.__era_ihud_wrapped = true
+    wrapped = true
+end
+
+local function force_ta_refresh()
+    if not (ta_original_update and ta_hud_tmr_uv and debug and debug.setupvalue) then return end
+    pcall(debug.setupvalue, ta_original_update, ta_hud_tmr_uv, 0)
+end
+
+local last_want = false
+local function apply()
+    ensure_wrap()
+
+    local want = want_display()
+    if want and not last_want then
+        force_ta_refresh() -- reveal: make TA recompute this tick (no stale/empty flash)
+    elseif not want then
+        local bg = toxic_air and toxic_air.HUD and toxic_air.HUD.bg
+        if bg and bg.Show then pcall(function() bg:Show(false) end) end -- instant hide
+    end
+    last_want = want
+end
+
+if core and core.register_integration then
+    core.register_integration({
+        id     = "toxic_air",
+        apply  = apply,       -- event-driven (toggle / inventory / option change)
+        update = ensure_wrap, -- per-frame: just make sure the Update wrapper is installed
+    })
+end
+
+-- No-op anchor: guarantees the engine loads this file (so the registration above runs).
+function on_game_start() end

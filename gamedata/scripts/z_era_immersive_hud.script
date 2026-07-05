@@ -15,23 +15,33 @@
 -- 1. Imports & constants
 -- ===========================================================================
 
-local MODE                               = z_era_immersive_hud_config.MODE
-local KEYS                               = z_era_immersive_hud_config.KEYS
-local settings_cache                     = z_era_immersive_hud_config.DEFAULTS
+local MODE                    = z_era_immersive_hud_config.MODE
+local KEYS                    = z_era_immersive_hud_config.KEYS
+local settings_cache          = z_era_immersive_hud_config.DEFAULTS
 
-local OFFSCREEN_OFFSET                   = 9999
-local OFFSCREEN_MIN_COORD                = OFFSCREEN_OFFSET / 2
+local OFFSCREEN_OFFSET        = 9999
+local OFFSCREEN_MIN_COORD     = OFFSCREEN_OFFSET / 2
 
-local BHS_REASSERT_INTERVAL              = 250
+local BHS_REASSERT_INTERVAL   = 250
 
 -- TODO: make these configurable by the user maybe?
-local DAMAGE_PSY_DROP                    = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
-local DAMAGE_PSY_RECOVERED_AT            = 0.999 -- health/psy at/above this = "fully recovered"
+local DAMAGE_PSY_DROP         = 0.001 -- min psy drop counted as a hit (tunable; real hits are larger)
+local DAMAGE_PSY_RECOVERED_AT = 0.999 -- health/psy at/above this = "fully recovered"
 
-local STAMINA_REVEAL_BELOW               = 0.9
-local STAMINA_REFILLED_AT                = 0.99
+local STAMINA_REVEAL_BELOW    = 0.9
+local STAMINA_REFILLED_AT     = 0.99
 
-local RADIATION_REVEAL_ABOVE             = 0 -- db.actor.radiation above this counts as "irradiated"
+local RADIATION_REVEAL_ABOVE  = 0 -- db.actor.radiation above this counts as "irradiated"
+
+-- ===========================================================================
+-- 1b. Mod integration registry
+-- ===========================================================================
+-- Bespoke third-party-mod integrations (such as Toxic Air).
+local integrations            = {}
+
+function register_integration(def)
+    integrations[#integrations + 1] = def
+end
 
 -- ===========================================================================
 -- 2. Reveal state  (module-level mutable state -- all reset in on_game_start)
@@ -77,7 +87,9 @@ local function reload_settings_cache()
     end
 end
 
-local function should_display_for_setting_key(element, inventory_reveal_key)
+-- Exposed as z_era_immersive_hud.should_display_for_setting_key so plugin files (see the
+-- plugin registry above) can reuse the SHOW/HIDE/KEY + hotkey-reveal resolution.
+function should_display_for_setting_key(element, inventory_reveal_key)
     local mode = settings_cache[element]
     if mode == MODE.SHOW then return true end
     if mode == MODE.HIDE then return false end
@@ -87,7 +99,6 @@ local function should_display_for_setting_key(element, inventory_reveal_key)
 
     return false
 end
-
 
 -- ===========================================================================
 -- 4. BHS & stamina integration  (the complex part -- see CLAUDE.md)
@@ -318,14 +329,6 @@ local function set_radiation_visible(visible)
 
     local win = ui_sidhud_mcm.HUD.radhealthwindow
     if win.Show then win:Show(visible and true or false) end
-end
-
--- For Drunks Enhanced Toxic Air's oxygen-tank bar.
-local function set_toxic_air_visible(visible)
-    if visible then return end -- let Toxic Air decide when to show
-    if not (toxic_air and toxic_air.HUD and toxic_air.HUD.bg) then return end
-    local bg = toxic_air.HUD.bg
-    if bg.Show then pcall(function() bg:Show(false) end) end
 end
 
 local function radiation_should_display()
@@ -644,7 +647,11 @@ function apply_hud_visibility_logic()
         KEYS.reveal_pda_messages_during_inventory))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
     set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
-    set_toxic_air_visible(should_display_for_setting_key(KEYS.mode_toxic_air))
+
+    -- Fan out to registered third-party-mod plugins (event-driven).
+    for _, it in ipairs(integrations) do
+        if it.apply then it.apply() end
+    end
 end
 
 -- ===========================================================================
@@ -683,7 +690,11 @@ local function actor_on_update_callback()
     apply_radiation()
     update_ammo_reveal()
     update_status_reveal()
-    set_toxic_air_visible(should_display_for_setting_key(KEYS.mode_toxic_air))
+
+    -- Fan out to registered third-party-mod plugins (per-frame).
+    for _, it in ipairs(integrations) do
+        if it.update then it.update() end
+    end
 
     -- BHS (or another mod such as DART) can rebuild and re-show its statics after we
     -- hid them. While BHS should be hidden, re-assert the hide if it has reappeared.
