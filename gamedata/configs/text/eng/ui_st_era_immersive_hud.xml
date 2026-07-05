@@ -56,4 +56,6 @@
 	<string id="ui_mcm_era_ihud_pda_notification_desc"><text>The small notification icon on the right that shows when a new PDA message arrives.</text></string>
 	<string id="ui_mcm_era_ihud_companion"><text>Companion list</text></string>
 	<string id="ui_mcm_era_ihud_companion_desc"><text>The on-screen companion list (health and distance) shown when you have squad members.</text></string>
+	<string id="ui_mcm_era_ihud_toxic_air"><text>Toxic air HUD</text></string>
+	<string id="ui_mcm_era_ihud_toxic_air_desc"><text>The oxygen-tank / mask-filter condition bar from the Toxic Air mod. Only appears while a filter or tank is equipped.</text></string>
 </string_table>

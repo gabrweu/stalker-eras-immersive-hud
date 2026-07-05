@@ -320,6 +320,14 @@ local function set_radiation_visible(visible)
     if win.Show then win:Show(visible and true or false) end
 end
 
+-- For Drunks Enhanced Toxic Air's oxygen-tank bar.
+local function set_toxic_air_visible(visible)
+    if visible then return end -- let Toxic Air decide when to show
+    if not (toxic_air and toxic_air.HUD and toxic_air.HUD.bg) then return end
+    local bg = toxic_air.HUD.bg
+    if bg.Show then pcall(function() bg:Show(false) end) end
+end
+
 local function radiation_should_display()
     -- Explicit HIDE guard: "Always hide" must beat the irradiated reveal below.
     if settings_cache.mode_radiation == MODE.HIDE then return false end
@@ -636,6 +644,7 @@ function apply_hud_visibility_logic()
         KEYS.reveal_pda_messages_during_inventory))
     set_pda_notification_visible(should_display_for_setting_key(KEYS.mode_pda_notification))
     set_companion_visible(should_display_for_setting_key(KEYS.mode_companion))
+    set_toxic_air_visible(should_display_for_setting_key(KEYS.mode_toxic_air))
 end
 
 -- ===========================================================================
@@ -674,6 +683,7 @@ local function actor_on_update_callback()
     apply_radiation()
     update_ammo_reveal()
     update_status_reveal()
+    set_toxic_air_visible(should_display_for_setting_key(KEYS.mode_toxic_air))
 
     -- BHS (or another mod such as DART) can rebuild and re-show its statics after we
     -- hid them. While BHS should be hidden, re-assert the hide if it has reappeared.
