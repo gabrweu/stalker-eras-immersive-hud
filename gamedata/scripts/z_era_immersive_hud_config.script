@@ -64,6 +64,7 @@ SETTINGS = {
     mode_row("mode_pda_notification", "era_ihud_pda_notification"),
     mode_row("mode_companion", "era_ihud_companion"),
     mode_row("mode_toxic_air", "era_ihud_toxic_air"),
+    mode_row("mode_compass", "era_ihud_compass"),
 }
 
 KEYS = {}

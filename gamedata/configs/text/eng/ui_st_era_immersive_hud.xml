@@ -58,4 +58,6 @@
 	<string id="ui_mcm_era_ihud_companion_desc"><text>The on-screen companion list (health and distance) shown when you have squad members.</text></string>
 	<string id="ui_mcm_era_ihud_toxic_air"><text>Toxic air HUD</text></string>
 	<string id="ui_mcm_era_ihud_toxic_air_desc"><text>The oxygen-tank / mask-filter condition bar from the Toxic Air mod. Only appears while a filter or tank is equipped.</text></string>
+	<string id="ui_mcm_era_ihud_compass"><text>Tactical Compass</text></string>
+	<string id="ui_mcm_era_ihud_compass_desc"><text>The Tactical Compass mod's compass bar and its waypoint markers.</text></string>
 </string_table>

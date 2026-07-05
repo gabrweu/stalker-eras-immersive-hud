@@ -1,0 +1,36 @@
+-- Tactical Compass support.
+local core = z_era_immersive_hud
+local KEYS = z_era_immersive_hud_config.KEYS
+
+local function want_display()
+    return core.should_display_for_setting_key(KEYS.mode_compass)
+end
+
+
+local function wrap_update(mod, class_name, container_field)
+    if not mod then return end -- mod not installed: nothing to wrap
+    local cls = mod[class_name]
+    if not (cls and cls.Update) or cls.__era_ihud_wrapped then return end
+
+    local original = cls.Update
+    cls.Update = function(self)
+        original(self) -- unguarded, like the Toxic Air/BHS hooks: never alter the mod's error behavior
+        if not want_display() then
+            local c = self[container_field]
+            if c and c.Show then pcall(function() c:Show(false) end) end
+        end
+    end
+    cls.__era_ihud_wrapped = true
+end
+
+local function ensure_wrap()
+    wrap_update(compass, "HUDCompass", "compass_container")
+    wrap_update(markers, "HUDMarker", "markers")
+end
+
+if core and core.register_integration then
+    core.register_integration({ id = "compass", apply = ensure_wrap, update = ensure_wrap })
+end
+
+-- No-op anchor: guarantees the engine loads this file (so the registration above runs).
+function on_game_start() end
