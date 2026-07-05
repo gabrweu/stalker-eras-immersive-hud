@@ -60,4 +60,6 @@
 	<string id="ui_mcm_era_ihud_toxic_air_desc"><text>The oxygen-tank / mask-filter condition bar from the Toxic Air mod. Only appears while a filter or tank is equipped.</text></string>
 	<string id="ui_mcm_era_ihud_compass"><text>Tactical Compass</text></string>
 	<string id="ui_mcm_era_ihud_compass_desc"><text>The Tactical Compass mod's compass bar and its waypoint markers.</text></string>
+	<string id="ui_mcm_era_ihud_stealth"><text>Stealth indicator</text></string>
+	<string id="ui_mcm_era_ihud_stealth_desc"><text>The Stealth Overhaul mod's light-gem / detection indicator.</text></string>
 </string_table>
