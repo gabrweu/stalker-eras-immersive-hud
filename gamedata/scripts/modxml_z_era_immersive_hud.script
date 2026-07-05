@@ -1,0 +1,33 @@
+local function parse_era_ihud(XML)
+	local Utils    = dart_utils
+	local Module   = dart_module
+
+	local cfg      = Module.config("bhs") or {}
+	local st       = Module.state("bhs") or {}
+	local settings = Utils.merge(cfg, st)
+	local scale    = cfg.scale
+
+	local lock     = XML:query("era_lock")[1]
+	if lock then
+		XML:correctElement(lock, settings)
+	end
+
+	local win = XML:query("era_rad_window")[1]
+	if win then
+		XML:correctElement(win, settings)
+
+		local fill = XML:query("era_rad_window > era_rad_fill")[1]
+		if fill then
+			XML:correctElement(fill, { scale = scale })
+		end
+	end
+end
+
+
+function on_xml_read()
+	if not (dart_module and dart_module.registerModule) then
+		return
+	end
+
+	dart_module.registerModule("era_ihud", "era_immersive_hud", parse_era_ihud)
+end
