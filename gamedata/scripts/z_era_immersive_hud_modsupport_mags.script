@@ -1,0 +1,40 @@
+-- Mags Reloaded (ready-magazine HUD) support.
+local core = z_era_immersive_hud
+local KEYS = z_era_immersive_hud_config.KEYS
+
+local function want_display()
+    return core.should_display_for_setting_key(KEYS.mode_mags)
+end
+
+local wrapped = false
+local function ensure_wrap()
+    if wrapped then return end
+    local cls = mag_hud and mag_hud.UIMagHUD
+    if not (cls and cls.Update) then return end
+    if cls.__era_ihud_wrapped then
+        wrapped = true
+        return
+    end
+
+    local original = cls.Update
+    -- Forward varargs: UIMagHUD:Update(force) is called both plain (per-frame) and with
+    -- force=true from several call sites -- the wrapper must not swallow the argument.
+    cls.Update = function(self, ...)
+        original(self, ...) -- unguarded, like the Toxic Air/compass/stealth hooks: never alter the mod's error behavior
+        if not want_display() then
+            -- self.dialog is the top-level "pouch" overlay static; it is what the mod itself
+            -- toggles (self.dialog:Show(show_hud)) each update tick, so re-hiding it every
+            -- frame keeps the mag overlay suppressed against its ~1s re-show loop.
+            if self.dialog and self.dialog.Show then pcall(function() self.dialog:Show(false) end) end
+        end
+    end
+    cls.__era_ihud_wrapped = true
+    wrapped = true
+end
+
+if core and core.register_integration then
+    core.register_integration({ id = "mags", apply = ensure_wrap, update = ensure_wrap })
+end
+
+-- No-op anchor: guarantees the engine loads this file (so the registration above runs).
+function on_game_start() end
