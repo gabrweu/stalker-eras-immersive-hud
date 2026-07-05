@@ -1,5 +1,5 @@
 # stalker-eras-immersive-hud
-Disable HUD elements with granularity or use a hotkey to toggle them at any time.
+Disable HUD elements with granularity or use a hotkey to toggle them at any time. [Video demo](https://www.youtube.com/watch?v=k_iaiEBnHK8).
 
 Idea is to allow for hud customization without overwriting GAMMA files nor using hud_draw nor affecting other mods. As a bonus, making it work for any mod without need for intrinsic support (this is very experimental; needs more testing before including again).
 
