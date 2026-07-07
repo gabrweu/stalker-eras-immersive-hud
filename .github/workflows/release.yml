@@ -39,7 +39,7 @@ jobs:
       - name: Create zip archive
         run: |
           cd build_temp
-          zip -r -9 ../ERA-Immersive-HUD-${{ github.event.inputs.version }}.zip gamedata
+          zip -r -9 ../ERA-Immersive-HUD-${{ github.event.inputs.version }}.zip gamedata fomod optional
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

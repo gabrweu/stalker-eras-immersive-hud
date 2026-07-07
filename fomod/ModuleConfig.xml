@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+    <moduleName>Era's Immersive HUD</moduleName>
+
+    <requiredInstallFiles>
+        <folder source="gamedata" destination="gamedata" priority="0"/>
+    </requiredInstallFiles>
+
+    <installSteps order="Explicit">
+        <installStep name="Optional Tweaks">
+            <optionalFileGroups order="Explicit">
+                <group name="Radiation bar" type="SelectAny">
+                    <plugins order="Explicit">
+                        <plugin name="Remove radiation bar">
+                            <description>Tick this if you want to fully remove the radiation bar. Otherwise, the mod will only remove the white fill and keep the background.
+
+WARNING: this OVERRIDES the BHS panel texture. Leave it UNCHECKED if you use a custom HUD/panel skin.</description>
+                            <image path="fomod/images/erase-radiation.png"/>
+                            <files>
+                                <folder source="optional/hide-radiation-bar/gamedata" destination="gamedata" priority="1"/>
+                            </files>
+                            <typeDescriptor>
+                                <type name="Optional"/>
+                            </typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+    </installSteps>
+</config>

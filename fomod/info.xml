@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fomod>
+    <Name>Era's Immersive HUD</Name>
+    <Author>era</Author>
+    <Version>1.0</Version>
+    <Website>https://github.com/gabrweu/stalker-eras-immersive-hud</Website>
+    <Description>Press a button to toggle HUD. Or only parts of the HUD. Or none of the HUD. Configure it however you want for the sexiest hud-less experience available.</Description>
+    <Groups>
+        <element>HUD</element>
+    </Groups>
+</fomod>
