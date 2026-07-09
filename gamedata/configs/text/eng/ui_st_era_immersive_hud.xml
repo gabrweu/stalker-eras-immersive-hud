@@ -35,6 +35,8 @@
 	<string id="ui_mcm_era_ihud_radiation_on_present_desc"><text>While the radiation bar is hidden, reveal it whenever you are irradiated, and keep it shown until your radiation returns to zero. Might not work well with different BHS texture mods.</text></string>
 	<string id="ui_mcm_era_ihud_statuses_on_new"><text>Show status effects when a new one appears</text></string>
 	<string id="ui_mcm_era_ihud_statuses_on_new_desc"><text>When a new status-effect icon appears (radiation, bleeding, hunger, a food/med buff, etc.) briefly reveal the status-effect bar, then auto-hide it after the reveal duration.</text></string>
+	<string id="ui_mcm_era_ihud_minimap_weapon_stowed"><text>Show minimap when weapon is stowed</text></string>
+	<string id="ui_mcm_era_ihud_minimap_weapon_stowed_desc"><text>While the minimap is hidden, reveal it when no weapon is in your hands, and hide it again when you draw a weapon.</text></string>
 	<string id="ui_mcm_era_ihud_ammo_weapon_out"><text>Show ammo when weapon is drawn</text></string>
 	<string id="ui_mcm_era_ihud_ammo_weapon_out_desc"><text>While the ammo and weapon HUD is hidden, reveal it whenever a weapon is in your hands, and hide it again when you holster.</text></string>
 	<string id="ui_mcm_era_ihud_ammo_mag_not_full"><text>Show ammo when magazine isn't full</text></string>

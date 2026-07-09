@@ -52,6 +52,7 @@ SETTINGS = {
     { key = "reveal_stamina_on_drain",              def = true,  group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_stamina_on_drain" } },
     { key = "reveal_radiation_on_present",          def = true,  group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_radiation_on_present" } },
     { key = "reveal_statuses_on_new",               def = true,  group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_statuses_on_new" } },
+    { key = "reveal_minimap_weapon_stowed",         def = false, group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_minimap_weapon_stowed" } },
     { key = "reveal_ammo_weapon_out",               def = false, group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_ammo_weapon_out" } },
     { key = "reveal_ammo_mag_not_full",             def = false, group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_ammo_mag_not_full" } },
     { key = "reveal_ammo_on_fire",                  def = false, group = "reveals",  mcm = { type = "check", val = 1, hint = "era_ihud_ammo_on_fire" } },
