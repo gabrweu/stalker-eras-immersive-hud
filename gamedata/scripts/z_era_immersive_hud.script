@@ -536,6 +536,21 @@ local function set_minimap_visible(visible)
     mg.UIMotionIcon:Show(visible and true or false)
 end
 
+local function minimap_should_display()
+    if settings_cache.mode_minimap == MODE.HIDE then return false end         -- Always hide beats the reveals below
+    if should_display_for_setting_key(KEYS.mode_minimap) then return true end -- SHOW, or KEY while hotkey-revealed
+
+    local item = db.actor:active_item()
+    if item and IsWeapon(item) then
+        if settings_cache.reveal_minimap_weapon_stowed then return false end
+    end
+    return settings_cache.reveal_minimap_weapon_stowed
+end
+
+local function update_minimap_reveal()
+    set_minimap_visible(minimap_should_display())
+end
+
 local function set_companion_visible(visible)
     if not (axr_companions and axr_companions.HUD) then return end
 
@@ -643,7 +658,7 @@ function apply_hud_visibility_logic()
     apply_bhs_visibility()
 
     apply_radiation()
-    set_minimap_visible(should_display_for_setting_key(KEYS.mode_minimap))
+    set_minimap_visible(minimap_should_display())
     set_ammo_visible(ammo_should_display())
     set_status_visible(status_reveal_active() or damage_reveal_active()
         or should_display_for_setting_key(KEYS.mode_statuses, KEYS.reveal_during_inventory))
@@ -693,6 +708,7 @@ local function actor_on_update_callback()
     update_stamina_reveal()
     apply_radiation()
     update_ammo_reveal()
+    update_minimap_reveal()
     update_status_reveal()
 
     -- Fan out to registered third-party-mod plugins (per-frame).
